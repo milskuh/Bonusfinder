@@ -1,0 +1,153 @@
+// Prisma schema for the Aanbiedingscraper (supermarket-offer aggregator).
+//
+// NOTE: This file was reconstructed from the query + validation code
+// (src/lib/queries/*, src/lib/validation/filters.ts) because no schema was
+// present in the handoff. Field names/types are pinned by that code; the
+// `Category` enum values and any fields marked "review" are best-effort
+// defaults — adjust to match your real ingestion pipeline.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled (PgBouncer) connection — used at runtime
+  directUrl = env("DIRECT_URL")   // direct connection — used by `prisma migrate`
+}
+
+/// Product-level categories. Aligned with the finer-grained taxonomy that the
+/// scrapers emit (see src/scrapers/categorize.ts).
+enum Category {
+  GROENTE // groente, aardappelen, salade
+  FRUIT // fruit
+  VLEES // vlees, kip, gehakt, worst
+  VIS // vis, zeevruchten
+  ZUIVEL // melk, yoghurt, boter (excl. eieren)
+  EIEREN // eieren
+  KAAS
+  BROOD_BANKET
+  DRANKEN // sappen, koffie, thee, water, bier, wijn
+  SODA // frisdrank / soda
+  PASTA_RIJST // pasta, rijst, noedels, wereldkeuken
+  SNACKS_SNOEP
+  DIEPVRIES
+  HOUDBAAR
+  ONTBIJT
+  DROGISTERIJ
+  HUISHOUDEN
+  BABY_KIND
+  HUISDIER
+}
+
+model Supermarket {
+  id      String  @id @default(cuid())
+  slug    String  @unique // "ah", "jumbo", "lidl", ...
+  name    String
+  logoUrl String?
+
+  offers       Offer[]
+  priceHistory PriceHistory[]
+}
+
+model Product {
+  id            String    @id @default(cuid())
+  name          String
+  nameEn        String? // English translation of `name`, filled by `npm run db:translate`
+  brand         String?
+  imageUrl      String?
+  category      Category
+  subcategory   String?
+  contentAmount Decimal?  @db.Decimal(10, 3) // e.g. 1.500
+  contentUnit   String? // e.g. "l", "kg", "g", "stuk"
+  url           String? // deep link to the product/offer page at the source
+
+  // Full-text search column. Declared as a plain (nullable) tsvector here so
+  // Prisma is aware of it; the GIN index + maintenance trigger + backfill are
+  // added out-of-band via prisma/fts_setup.sql (run after migrate).
+  searchVector Unsupported("tsvector")?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offers       Offer[]
+  priceHistory PriceHistory[]
+  favorites    Favorite[]
+
+  @@index([category])
+  @@index([subcategory])
+  @@index([brand])
+}
+
+model Offer {
+  id String @id @default(cuid())
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  supermarketId String
+  supermarket   Supermarket @relation(fields: [supermarketId], references: [id], onDelete: Cascade)
+
+  // Nullable: some promotions have no single sale price (e.g. AH "25% korting",
+  // "1+1 gratis") — those carry only offerText / discountPercent.
+  salePrice       Decimal? @db.Decimal(10, 2)
+  originalPrice   Decimal? @db.Decimal(10, 2)
+  // Null when the offer has no separate "normal" price (e.g. "1+1 gratis",
+  // "2e halve prijs") — those keep only salePrice + offerText. See
+  // src/scrapers/normalize.ts.
+  discountPercent Int?
+  offerText       String? // raw promo label, e.g. "1+1 gratis", "per kuip 2.99"
+  // Price normalised to the product's base unit (per l / kg / stuk), used for
+  // "beste deal" comparisons across pack sizes.
+  pricePerUnit    Decimal? @db.Decimal(12, 4)
+  pricePerUnitOf  String? // the unit pricePerUnit is expressed in
+
+  validFrom  DateTime @default(now())
+  validUntil DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([validUntil])
+  @@index([productId])
+  @@index([supermarketId])
+  @@index([discountPercent])
+  @@index([pricePerUnit])
+}
+
+model PriceHistory {
+  id String @id @default(cuid())
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  supermarketId String
+  supermarket   Supermarket @relation(fields: [supermarketId], references: [id], onDelete: Cascade)
+
+  price      Decimal  @db.Decimal(10, 2)
+  isOffer    Boolean  @default(false)
+  recordedAt DateTime @default(now())
+
+  @@index([productId, recordedAt])
+}
+
+model User {
+  id         String   @id @default(cuid())
+  externalId String   @unique // Clerk user id
+  createdAt  DateTime @default(now())
+
+  favorites Favorite[]
+}
+
+model Favorite {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId]) // -> compound key userId_productId (used in favorites route)
+  @@index([productId])
+}

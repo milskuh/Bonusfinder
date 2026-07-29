@@ -1,0 +1,52 @@
+{
+  "name": "aanbiedingscraper",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:fts": "prisma db execute --file prisma/fts_setup.sql --schema prisma/schema.prisma",
+    "db:seed": "prisma db seed",
+    "db:scrape": "tsx src/scrapers/run.ts",
+    "db:translate": "tsx src/scrapers/translate-run.ts",
+    "db:reset": "prisma migrate reset",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "@clerk/nextjs": "^6.12.0",
+    "@clerk/ui": "^1.26.1",
+    "@prisma/client": "^6.5.0",
+    "@tanstack/react-query": "^5.66.0",
+    "cheerio": "^1.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
+    "next": "^15.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.0.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^20.17.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.2.0",
+    "prisma": "^6.5.0",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.0",
+    "tw-animate-css": "^1.0.0",
+    "typescript": "^5.7.0"
+  }
+}
