@@ -43,6 +43,7 @@ export type OffersResponse = {
 };
 
 export type OffersQuery = {
+  q?: string;
   sort?: OfferSort;
   page?: number;
   pageSize?: number;
@@ -51,14 +52,15 @@ export type OffersQuery = {
   discountMin?: number;
 };
 
-function toSearchParams(q: OffersQuery): URLSearchParams {
+function toSearchParams(query: OffersQuery): URLSearchParams {
   const sp = new URLSearchParams();
-  if (q.sort) sp.set("sort", q.sort);
-  if (q.page) sp.set("page", String(q.page));
-  if (q.pageSize) sp.set("pageSize", String(q.pageSize));
-  if (q.supermarkets?.length) sp.set("supermarkets", q.supermarkets.join(","));
-  if (q.categories?.length) sp.set("categories", q.categories.join(","));
-  if (q.discountMin != null) sp.set("discountMin", String(q.discountMin));
+  if (query.q) sp.set("q", query.q);
+  if (query.sort) sp.set("sort", query.sort);
+  if (query.page) sp.set("page", String(query.page));
+  if (query.pageSize) sp.set("pageSize", String(query.pageSize));
+  if (query.supermarkets?.length) sp.set("supermarkets", query.supermarkets.join(","));
+  if (query.categories?.length) sp.set("categories", query.categories.join(","));
+  if (query.discountMin != null) sp.set("discountMin", String(query.discountMin));
   return sp;
 }
 

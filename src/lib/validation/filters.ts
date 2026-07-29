@@ -11,6 +11,9 @@ export const offerSortSchema = z
 export type OfferSort = z.infer<typeof offerSortSchema>;
 
 export const offerFiltersSchema = z.object({
+  // Vrije-tekst zoekopdracht over productnamen (Postgres full-text search).
+  // Leeg/afwezig => geen filtering (zie getOffers). Getrimd + gemaximeerd.
+  q: z.string().trim().max(100).optional(),
   supermarkets: z.array(z.string()).optional(), // slugs: ["ah", "jumbo"]
   categories: z.array(z.nativeEnum(Category)).optional(),
   subcategories: z.array(z.string()).optional(),
@@ -32,6 +35,7 @@ export function parseOfferFilters(sp: URLSearchParams): OfferFilters {
     return v ? v.split(",").filter(Boolean) : undefined;
   };
   return offerFiltersSchema.parse({
+    q: sp.get("q") ?? undefined,
     supermarkets: list("supermarkets"),
     categories: list("categories"),
     subcategories: list("subcategories"),

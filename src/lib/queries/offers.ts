@@ -41,6 +41,21 @@ export async function getOffers(filters: OfferFilters) {
     },
   };
 
+  // Vrije-tekst zoekopdracht: match via de trigger-onderhouden tsvector
+  // (Product.searchVector, Dutch config — dezelfde als prisma/fts_setup.sql, dus
+  // query-tijd en index-tijd komen overeen). Prisma's ingebouwde `search` mikt
+  // niet op deze custom kolom, dus we halen de matchende product-IDs op met een
+  // geparametriseerde raw query en voegen ze toe als extra filter. Zo COMBINEERT
+  // `q` met de bestaande categorie-/prijs-/kortingfilters, sortering en paginatie
+  // (geen vervanging). Geen match => lege set => lege feed.
+  if (filters.q) {
+    const matches = await db.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Product"
+      WHERE "searchVector" @@ websearch_to_tsquery('dutch', ${filters.q})
+    `;
+    where.productId = { in: matches.map((m) => m.id) };
+  }
+
   const [total, offers] = await db.$transaction([
     db.offer.count({ where }),
     db.offer.findMany({
