@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { ImageOff } from "lucide-react";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useLang } from "@/components/language-provider";
 import { supermarketBrand, type SupermarketBrand } from "@/lib/supermarkets";
 import { FavoriteButton } from "./favorite-button";
@@ -51,6 +53,60 @@ function StoreChip({
   );
 }
 
+/**
+ * Product photo in a fixed 4:3 box so cards stay uniform regardless of the
+ * source image's dimensions. Shows a skeleton while loading and a neutral icon
+ * placeholder when the image is missing or fails to load — so a null imageUrl
+ * or a dead remote URL never breaks the layout.
+ */
+function ProductImage({
+  src,
+  alt,
+  emptyLabel,
+}: {
+  src: string | null;
+  alt: string;
+  emptyLabel: string;
+}) {
+  const [status, setStatus] = useState<"loading" | "loaded" | "error">(
+    src ? "loading" : "error",
+  );
+
+  return (
+    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg bg-muted">
+      {src && status !== "error" && (
+        // Plain lazy <img>: product/logo image hosts vary per source (and can
+        // change), so we skip a next/image remote-host allowlist and lean on
+        // onError for a clean fallback instead.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setStatus("loaded")}
+          onError={() => setStatus("error")}
+          className={`h-full w-full object-contain transition-opacity duration-200 ${
+            status === "loaded" ? "opacity-100" : "opacity-0"
+          }`}
+        />
+      )}
+      {status === "loading" && (
+        <Skeleton className="absolute inset-0 h-full w-full rounded-lg" />
+      )}
+      {status === "error" && (
+        <div
+          role="img"
+          aria-label={emptyLabel}
+          className="absolute inset-0 flex items-center justify-center text-muted-foreground"
+        >
+          <ImageOff className="h-8 w-8" aria-hidden />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function OfferCard({ offer }: { offer: OfferListItem }) {
   const { t, locale, formatDate, offerText } = useLang();
   const brand = supermarketBrand(offer.supermarket.slug);
@@ -89,22 +145,29 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
         </div>
       </CardHeader>
 
-      <CardContent className="px-4">
-        {offer.product.url ? (
-          <a
-            href={offer.product.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="line-clamp-2 text-sm font-medium hover:underline"
-          >
-            {productName}
-          </a>
-        ) : (
-          <h3 className="line-clamp-2 text-sm font-medium">{productName}</h3>
-        )}
-        {offer.product.brand && (
-          <p className="text-xs text-muted-foreground">{offer.product.brand}</p>
-        )}
+      <CardContent className="space-y-3 px-4">
+        <ProductImage
+          src={offer.product.imageUrl}
+          alt={productName}
+          emptyLabel={t("card.noImage")}
+        />
+        <div>
+          {offer.product.url ? (
+            <a
+              href={offer.product.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="line-clamp-2 text-sm font-medium hover:underline"
+            >
+              {productName}
+            </a>
+          ) : (
+            <h3 className="line-clamp-2 text-sm font-medium">{productName}</h3>
+          )}
+          {offer.product.brand && (
+            <p className="text-xs text-muted-foreground">{offer.product.brand}</p>
+          )}
+        </div>
       </CardContent>
 
       <CardFooter className="flex-col items-start gap-0.5 px-4">

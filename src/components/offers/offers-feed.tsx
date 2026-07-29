@@ -26,7 +26,8 @@ function OfferSkeleton() {
         <Skeleton className="h-5 w-16" />
         <Skeleton className="h-5 w-10" />
       </div>
-      <div className="px-4">
+      <div className="space-y-3 px-4">
+        <Skeleton className="aspect-[4/3] w-full rounded-lg" />
         <Skeleton className="h-4 w-3/4" />
       </div>
       <div className="px-4">
