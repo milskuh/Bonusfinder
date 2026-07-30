@@ -8,7 +8,8 @@ session first. Dates are absolute.
 ## 2026-07-30 — Three new supermarkets (Jumbo, Aldi, Lidl)
 
 Added scrapers for **Jumbo, Aldi and Lidl**, taking the aggregator from two
-sources to **five** (~340 → ~530 offers/week). Ingestion-only: the shared
+sources to **five** — **191 → 532** active offers (Hoogvliet 73 + AH 118, plus
+Jumbo 65 + Aldi 190 + Lidl 86). Ingestion-only: the shared
 pipeline (`categorize` / `normalize` / `persist`) and the schema are
 **unchanged** — each store is a thin new adapter that flows through it. One
 commit per store, each with pure/tested parsing helpers and a

@@ -5,7 +5,7 @@ normalises them into one database, and shows them in a filterable, bilingual
 (NL/EN) feed where you can compare prices and save favourites.
 
 > Status: five live supermarkets (**Hoogvliet**, **Albert Heijn**, **Jumbo**,
-> **Aldi**, **Lidl**), ~530 real offers per week. No fake/demo data.
+> **Aldi**, **Lidl**), ~532 real offers per week. No fake/demo data.
 
 ---
 
