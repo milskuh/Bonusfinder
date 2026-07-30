@@ -5,6 +5,57 @@ session first. Dates are absolute.
 
 ---
 
+## 2026-07-30 — Three new supermarkets (Jumbo, Aldi, Lidl)
+
+Added scrapers for **Jumbo, Aldi and Lidl**, taking the aggregator from two
+sources to **five** (~340 → ~530 offers/week). Ingestion-only: the shared
+pipeline (`categorize` / `normalize` / `persist`) and the schema are
+**unchanged** — each store is a thin new adapter that flows through it. One
+commit per store, each with pure/tested parsing helpers and a
+`sources/<store>.discovery.md` recording the live inspection.
+
+### TL;DR
+
+- **Jumbo** (`sources/jumbo.ts`, 65 offers) — `jumbo.com/aanbiedingen/nu` is a
+  Nuxt SSR app; the offers are inlined as a devalue payload
+  (`<script id="__NUXT_DATA__">`). One GET + unflatten the payload. Promotion-
+  centric like AH: deal in a text tag (`voor 1,99` → salePrice; `2 voor 6,00` →
+  bundle; `1+1 gratis`/`% korting` → offerText only, no synthesized price).
+- **Aldi** (`sources/aldi.ts`, 190 offers) — the folder is a graphical iPaper
+  leaflet, but `aldi.nl/aanbiedingen.html` (Next.js) inlines a fully structured
+  feed (`pageProps.apiData` → `OFFER_GET.algoliaDataMap`). Real was→now prices,
+  so it goes through `normalize.ts` (like Hoogvliet); unit price recovered from
+  Aldi's `basePrice`.
+- **Lidl** (`sources/lidl.ts`, 86 offers) — **not** walled off as expected: a
+  plain fetch of the offers page returns 200 and products are inlined as
+  `data-grid-data="{…}"` tile attributes. Discover the rotating
+  `/c/aanbiedingen/a<id>` URL from the homepage, parse the tiles. Real
+  was→now prices via `normalize.ts`.
+- **Branding + seed:** the three slugs were already seeded; added their brand
+  colours to `lib/supermarkets.ts` (Jumbo yellow, Aldi #00b4dc, Lidl blue) and
+  registered them in `run.ts`. Adds a `test` script (Node runner via `tsx`) and
+  **26 scraper unit tests**.
+
+### Gentle & permitted
+
+All three are **plain HTTP, anonymous, robots-permitted**, and each pulls the
+whole week in **1–2 requests** (the offer lists are server-inlined, no
+pagination). No headless browser, no app/backend API, no OCR, and — notably for
+Lidl — **no CAPTCHA/WAF/login was encountered or bypassed**. The brief's
+"Lidl is walled off, use the backend API" premise was verified **outdated** and
+is documented in `sources/lidl.discovery.md`.
+
+### Honest pricing, unchanged rules
+
+Multi-buy / percentage promos keep only `salePrice` + `offerText` with
+`originalPrice`/`discountPercent` left null (Jumbo `1+1 gratis`, Aldi/AH
+`N voor P`) — no synthesized price or percentage. Aldi and Lidl carry a real
+strike-through price, so those flow through the **existing** `normalize.ts` for
+the one canonical discount rule (and get `pricePerUnit`, so they compete for the
+cross-store "beste deal" flag).
+
+---
+
 ## 2026-07-30
 
 Three **feed presentation + search** features on top of the aggregator. Web-app

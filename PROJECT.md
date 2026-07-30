@@ -4,8 +4,8 @@ A web app that scrapes Dutch supermarket **weekly deals** ("aanbiedingen"),
 normalises them into one database, and shows them in a filterable, bilingual
 (NL/EN) feed where you can compare prices and save favourites.
 
-> Status: two live supermarkets (**Hoogvliet**, **Albert Heijn**), ~191 real
-> offers per week. No fake/demo data.
+> Status: five live supermarkets (**Hoogvliet**, **Albert Heijn**, **Jumbo**,
+> **Aldi**, **Lidl**), ~530 real offers per week. No fake/demo data.
 
 ---
 
@@ -74,7 +74,9 @@ product across supermarkets can be ranked "beste deal".
   cheapest current offer per saved product.
 - **NL/EN language toggle** — the entire UI, deal text, dates, and (with a key)
   product names switch language; the choice persists.
-- **Two supermarkets** — Hoogvliet and Albert Heijn, each behind a thin adapter.
+- **Five supermarkets** — Hoogvliet, Albert Heijn, Jumbo, Aldi and Lidl, each
+  behind a thin adapter. Per-store discovery notes live in
+  `src/scrapers/sources/<store>.discovery.md`.
 
 ---
 
