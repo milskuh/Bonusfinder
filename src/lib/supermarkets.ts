@@ -23,6 +23,7 @@ const BRANDS: Record<string, SupermarketBrand> = {
   ah: { badge: "AH", color: "#0071b9", foreground: "#ffffff" }, // Albert Heijn blue
   hoogvliet: { badge: "HV", color: "#e2001a", foreground: "#ffffff" }, // Hoogvliet red
   jumbo: { badge: "JUMBO", color: "#eeb111", foreground: "#000000" }, // Jumbo yellow (black text)
+  aldi: { badge: "ALDI", color: "#00b4dc", foreground: "#ffffff" }, // Aldi blue
 };
 
 /** Neutral identity for stores not yet in the map (keeps new slugs from crashing). */
