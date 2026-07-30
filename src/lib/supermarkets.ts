@@ -25,6 +25,7 @@ const BRANDS: Record<string, SupermarketBrand> = {
   jumbo: { badge: "JUMBO", color: "#eeb111", foreground: "#000000" }, // Jumbo yellow (black text)
   aldi: { badge: "ALDI", color: "#00b4dc", foreground: "#ffffff" }, // Aldi blue
   lidl: { badge: "LIDL", color: "#0050aa", foreground: "#ffffff" }, // Lidl blue
+  dirk: { badge: "DIRK", color: "#e30613", foreground: "#ffffff" }, // Dirk red (site theme colour)
 };
 
 /** Neutral identity for stores not yet in the map (keeps new slugs from crashing). */

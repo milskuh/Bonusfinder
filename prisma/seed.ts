@@ -19,6 +19,7 @@ const supermarkets = [
   { slug: "jumbo", name: "Jumbo", logoUrl: "https://logo.clearbit.com/jumbo.com" },
   { slug: "lidl", name: "Lidl", logoUrl: "https://logo.clearbit.com/lidl.nl" },
   { slug: "aldi", name: "Aldi", logoUrl: "https://logo.clearbit.com/aldi.nl" },
+  { slug: "dirk", name: "Dirk", logoUrl: "https://logo.clearbit.com/dirk.nl" },
   { slug: "plus", name: "PLUS", logoUrl: "https://logo.clearbit.com/plus.nl" },
 ];
 
