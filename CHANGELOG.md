@@ -1,7 +1,104 @@
 # Changelog
 
-All notable changes from the 2026-07-29 working session. Grouped by feature, in
-the order they were built. Dates are absolute.
+All notable changes, grouped by feature in the order they were built, newest
+session first. Dates are absolute.
+
+---
+
+## 2026-07-30
+
+Three **feed presentation + search** features on top of the aggregator. Web-app
+only — no scraper, schema, or migration changes. Each shipped as its own commit.
+
+### TL;DR
+
+- **Per-store visual identity** — a brand-coloured accent bar + logo chip on every
+  card, driven by one typed config; tells you the store at a glance and scales to
+  new chains.
+- **Product images** — `Product.imageUrl` shown in a fixed 4:3 box with a skeleton
+  while loading and a graceful placeholder for missing/broken images (no layout
+  shift).
+- **Search bar** — debounced text search over product names, backed by the
+  **existing** Postgres `tsvector`; composes with the category/sort/price filters
+  and syncs to the URL.
+- No new dependencies, no migrations. New files: `src/lib/supermarkets.ts` and the
+  shadcn `input` primitive.
+
+---
+
+### 1. Per-store visual identity (`src/lib/supermarkets.ts`)
+
+A typed, `slug`-keyed brand config (primary colour + readable foreground + short
+badge), modelled on [categories.ts](src/lib/categories.ts), with a **neutral
+fallback** so an unknown slug never crashes. Each
+[OfferCard](src/components/offers/offer-card.tsx) now carries a brand-coloured
+**left accent bar** + a **store chip** (logo on a white tile → falls back to the
+badge / first initial when the logo is missing or fails to load). Adding
+Jumbo/Lidl/Aldi later is a **single entry** in `supermarkets.ts`.
+
+- Colours are centralised in the config (not hardcoded in components) and applied
+  via inline style. AH = `#0071b9`, Hoogvliet = `#e2001a` — **approximations of the
+  brand colours; tune against the real logos.**
+
+### 2. Product images with fallback
+
+- Photo in a fixed **4:3** box (`object-contain`) so cards stay uniform regardless
+  of source dimensions; a **skeleton** shows while loading and the feed skeleton
+  reserves the same space → no layout shift.
+- **Fallback (required):** a null/empty `imageUrl` or a runtime `onError` → a
+  neutral icon placeholder (bilingual `card.noImage` label), never a broken image.
+- **Plain lazy `<img>`, not `next/image`:** product/logo hosts vary per source and
+  can change (`static.ah.nl`, `www.hoogvliet.com`, `logo.clearbit.com`), so a
+  `next/image` `remotePatterns` allowlist would be brittle; `<img loading="lazy">`
+  + `onError` is robust and emits no console errors. `next.config.ts` untouched.
+
+### 3. Search bar — Postgres full-text search
+
+Reuses the existing trigger-maintained `Product.searchVector` (Dutch config, see
+`prisma/fts_setup.sql`) — **not rebuilt.** Wired end-to-end:
+
+- **`q`** added to the shared Zod schema in
+  [filters.ts](src/lib/validation/filters.ts) (trimmed, max 100, optional);
+  empty/absent behaves exactly as before (no filtering).
+- [queries/offers.ts](src/lib/queries/offers.ts): a parameterized `$queryRaw` with
+  `websearch_to_tsquery('dutch', …)` (same config as index-time) resolves matching
+  product IDs, added as `productId: { in: [...] }` so `q` **composes** with the
+  category/price/discount filters, sort and pagination rather than replacing them.
+- [use-offers.ts](src/hooks/use-offers.ts): `q` is part of the query key → results
+  cache per search term.
+- [offers-feed.tsx](src/components/offers/offers-feed.tsx): a shadcn `Input` with a
+  **300 ms debounce**, page reset on a new term, **URL sync** via
+  `history.replaceState` (shareable + refresh-safe, no Suspense boundary needed), a
+  clear (X) button, and a clear-search action in the empty state. Bilingual
+  `search.placeholder` / `search.clear`.
+
+The `/api/offers` handler already passes parsed filters straight to `getOffers`,
+so no route change was needed.
+
+### Files added
+
+```
+src/lib/supermarkets.ts        # per-store brand config (colour, foreground, badge)
+src/components/ui/input.tsx    # shadcn input primitive
+```
+
+### Files changed
+
+`src/components/offers/{offer-card,offers-feed}.tsx`,
+`src/lib/{i18n,validation/filters,queries/offers}.ts`, `src/hooks/use-offers.ts`.
+
+### Verified
+
+`npx tsc --noEmit` and `npm run build` pass. Live smoke test against real data:
+store recognisable at a glance (logo→badge fallback confirmed when the remote logo
+failed), images load in a fixed box with placeholder + no layout shift, `"kip"`
+narrows the feed 24→2 (incl. Dutch stemming on "Kips paté"), search composes with
+the category filter, persists across a refresh via the URL, and toggles NL/EN
+cleanly.
+
+> **Note:** the repo has no ESLint config (`next lint` drops into interactive
+> setup), so linting runs only as part of `next build` (clean) — there is no
+> standalone `npm run lint` pass.
 
 ---
 
