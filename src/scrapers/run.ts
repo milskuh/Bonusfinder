@@ -10,10 +10,11 @@ import { hoogvliet } from "./sources/hoogvliet";
 import { albertHeijn } from "./sources/albert-heijn";
 import { jumbo } from "./sources/jumbo";
 import { aldi } from "./sources/aldi";
+import { lidl } from "./sources/lidl";
 import { persistOffers } from "./persist";
 import type { Scraper } from "./types";
 
-const SCRAPERS: Scraper[] = [hoogvliet, albertHeijn, jumbo, aldi];
+const SCRAPERS: Scraper[] = [hoogvliet, albertHeijn, jumbo, aldi, lidl];
 
 async function main() {
   const args = process.argv.slice(2);
