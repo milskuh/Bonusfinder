@@ -8,10 +8,11 @@
 // Flags and slugs can be combined, e.g. `-- hoogvliet --dry`.
 import { hoogvliet } from "./sources/hoogvliet";
 import { albertHeijn } from "./sources/albert-heijn";
+import { jumbo } from "./sources/jumbo";
 import { persistOffers } from "./persist";
 import type { Scraper } from "./types";
 
-const SCRAPERS: Scraper[] = [hoogvliet, albertHeijn];
+const SCRAPERS: Scraper[] = [hoogvliet, albertHeijn, jumbo];
 
 async function main() {
   const args = process.argv.slice(2);

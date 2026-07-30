@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:fts": "prisma db execute --file prisma/fts_setup.sql --schema prisma/schema.prisma",
