@@ -1,0 +1,56 @@
+# Refreshes the offer database from every supermarket source.
+#
+# Runs daily (not weekly) on purpose: the six stores rotate their weekly ads on
+# different weekdays, so a daily run picks up each new ad within a day of it going
+# live and prunes past-date offers promptly. The ingestion is non-destructive
+# (active offers are updated in place, never wiped — see src/scrapers/persist.ts),
+# so running often is safe. For a weekly cadence instead, use: cron '0 4 * * 1'.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   DATABASE_URL      pooled Postgres connection (same as the app)
+#   DIRECT_URL        direct Postgres connection
+#   ANTHROPIC_API_KEY optional — if set, new product names are translated to
+#                     English after each scrape; if absent, that step is skipped.
+name: Scrape offers
+
+on:
+  schedule:
+    - cron: "12 4 * * *" # 04:12 UTC daily (~06:12 Amsterdam)
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+# Never let two ingestion runs overlap and race on the same rows.
+concurrency:
+  group: scrape-offers
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci # postinstall runs `prisma generate`
+
+      - name: Scrape offers into the database
+        run: npm run db:scrape
+
+      # Only runs when ANTHROPIC_API_KEY is configured; a hiccup here must not fail
+      # the scrape, which is the important part.
+      - name: Translate new product names to English
+        if: ${{ env.ANTHROPIC_API_KEY != '' }}
+        continue-on-error: true
+        run: npm run db:translate

@@ -61,7 +61,7 @@ async function main() {
 
       const result = await persistOffers(scraper, offers);
       console.log(
-        `  Saved: ${result.offers} offers (${result.products} new products).`,
+        `  Saved: ${result.created} new, ${result.updated} updated, ${result.expired} past-date removed (${result.products} new products).`,
       );
     } catch (err) {
       console.error(`  ✖ ${scraper.name} failed:`, err);
