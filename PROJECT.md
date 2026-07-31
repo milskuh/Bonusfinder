@@ -1,4 +1,4 @@
-# Aanbiedingscraper — Project Overview
+# Bonusfinder — Project Overview
 
 A web app that scrapes Dutch supermarket **weekly deals** ("aanbiedingen"),
 normalises them into one database, and shows them in a filterable, bilingual

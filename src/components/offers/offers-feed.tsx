@@ -1,15 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Loader2, Search, X } from "lucide-react";
 import { useOffers } from "@/hooks/use-offers";
 import type { OfferSort } from "@/lib/validation/filters";
 import { categoryLabel, CATEGORY_ORDER } from "@/lib/categories";
 import { useLang } from "@/components/language-provider";
 import type { TKey } from "@/lib/i18n";
 import { OfferCard } from "./offer-card";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const SORTS: { value: OfferSort; labelKey: TKey }[] = [
@@ -23,19 +21,18 @@ const PAGE_SIZE = 24;
 
 function OfferSkeleton() {
   return (
-    <Card className="gap-3 py-4">
-      <div className="flex items-center justify-between px-4">
-        <Skeleton className="h-5 w-16" />
-        <Skeleton className="h-5 w-10" />
+    <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-neutral-200">
+      <Skeleton className="aspect-square w-full rounded-none" />
+      <div className="flex flex-col gap-2 p-4">
+        <Skeleton className="h-3.5 w-full" />
+        <Skeleton className="h-3.5 w-2/3" />
+        <Skeleton className="mt-2 h-8 w-24" />
+        <div className="mt-2 flex items-center justify-between border-t border-neutral-100 pt-2.5">
+          <Skeleton className="h-3 w-16" />
+          <Skeleton className="h-3 w-14" />
+        </div>
       </div>
-      <div className="space-y-3 px-4">
-        <Skeleton className="aspect-[4/3] w-full rounded-lg" />
-        <Skeleton className="h-4 w-3/4" />
-      </div>
-      <div className="px-4">
-        <Skeleton className="h-6 w-20" />
-      </div>
-    </Card>
+    </div>
   );
 }
 
@@ -43,7 +40,6 @@ export function OffersFeed() {
   const { t, locale } = useLang();
   const [sort, setSort] = useState<OfferSort>("newest");
   const [categories, setCategories] = useState<string[]>([]);
-  const [page, setPage] = useState(1);
   // `rawQuery` mirrors the input on every keystroke; `query` is the debounced
   // term that actually drives the fetch + URL, so we don't fire a request per
   // keystroke.
@@ -68,16 +64,16 @@ export function OffersFeed() {
     return () => clearTimeout(id);
   }, [rawQuery]);
 
-  // On a new search term: reset to page 1 and mirror it to the URL (shareable,
-  // refresh-safe) via the history API — this avoids forcing a Suspense boundary
-  // that useSearchParams would require. Skip the initial mount so we don't
-  // rewrite the URL before hydration. Other filters remain local state, as before.
+  // On a new search term: mirror it to the URL (shareable, refresh-safe) via the
+  // history API — this avoids forcing a Suspense boundary that useSearchParams
+  // would require. The infinite query resets on its own because `query` is part
+  // of the query key. Skip the initial mount so we don't rewrite the URL before
+  // hydration. Other filters remain local state, as before.
   useEffect(() => {
     if (firstSyncRef.current) {
       firstSyncRef.current = false;
       return;
     }
-    setPage(1);
     const params = new URLSearchParams(window.location.search);
     if (query) params.set("q", query);
     else params.delete("q");
@@ -85,16 +81,71 @@ export function OffersFeed() {
     window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
   }, [query]);
 
-  const { data, isPending, isError, error, isPlaceholderData } = useOffers({
+  // When the active filters change, jump back to the top. With infinite scroll
+  // the page grows very tall, so switching filters while scrolled deep would
+  // otherwise strand you at the bottom of the new (often shorter) result set —
+  // and the IntersectionObserver below would immediately auto-load pages trying
+  // to reach that stale depth, so the freshly filtered offers never show from
+  // the start. Skip the first mount to preserve initial/back-navigation scroll.
+  const firstScrollRef = useRef(true);
+  useEffect(() => {
+    if (firstScrollRef.current) {
+      firstScrollRef.current = false;
+      return;
+    }
+    window.scrollTo(0, 0);
+  }, [query, sort, categories]);
+
+  const {
+    data,
+    isPending,
+    isError,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useOffers({
     q: query,
     sort,
     categories,
-    page,
     pageSize: PAGE_SIZE,
   });
 
+  // Flatten all fetched pages into one list, de-duplicating by id. Offset
+  // pagination can repeat a row across a page boundary (rows sharing a sort key,
+  // or a new ingest shifting the window between fetches). The server sorts with
+  // a unique tiebreaker (see getOffers) so overlaps shouldn't happen — but a
+  // duplicate `key` here would corrupt the grid, so we guard anyway. The total
+  // (count across every matching offer) lives on each page — read the first.
+  const seen = new Set<string>();
+  const offers = (data?.pages.flatMap((p) => p.items) ?? []).filter((o) => {
+    if (seen.has(o.id)) return false;
+    seen.add(o.id);
+    return true;
+  });
+  const total = data?.pages[0]?.total ?? null;
+
+  // Infinite scroll: load the next page when the sentinel below the grid nears
+  // the viewport. rootMargin pre-fetches ~a screen early so scrolling stays
+  // smooth. The effect re-runs when hasNextPage/isFetchingNextPage change, which
+  // is also when the sentinel (un)mounts, so the observer always tracks it.
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "600px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   const toggleCategory = (cat: string) => {
-    setPage(1);
     setCategories((prev) =>
       prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat],
     );
@@ -104,42 +155,23 @@ export function OffersFeed() {
 
   return (
     <section className="mx-auto max-w-6xl px-6 py-8">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t("offers.title")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {data ? t("offers.count", { n: data.total }) : t("offers.loading")}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-1.5">
-          {SORTS.map((s) => (
-            <button
-              key={s.value}
-              onClick={() => {
-                setSort(s.value);
-                setPage(1);
-              }}
-              className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
-                sort === s.value
-                  ? "bg-primary text-primary-foreground border-transparent"
-                  : "hover:bg-accent"
-              }`}
-            >
-              {t(s.labelKey)}
-            </button>
-          ))}
-        </div>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
+          {t("offers.title")}
+        </h1>
+        <p className="mt-1 text-sm text-neutral-500">
+          {total !== null ? t("offers.count", { n: total }) : t("offers.loading")}
+        </p>
       </div>
 
-      {/* Search over product names (debounced, backed by Postgres FTS). */}
-      <div className="mb-4">
-        <div className="relative w-full sm:max-w-sm">
+      {/* Search (debounced, Postgres FTS) + sort as a segmented control. */}
+      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative w-full lg:max-w-sm">
           <Search
-            className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-neutral-400"
             aria-hidden
           />
-          <Input
+          <input
             type="text"
             enterKeyHint="search"
             value={rawQuery}
@@ -149,32 +181,47 @@ export function OffersFeed() {
             }}
             placeholder={t("search.placeholder")}
             aria-label={t("search.placeholder")}
-            className="px-9"
+            className="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pr-10 pl-11 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900"
           />
           {rawQuery && (
             <button
               type="button"
               onClick={clearSearch}
               aria-label={t("search.clear")}
-              className="absolute top-1/2 right-2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="absolute top-1/2 right-2.5 grid size-6 -translate-y-1/2 place-items-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
             >
-              <X className="h-4 w-4" />
+              <X className="size-4" />
             </button>
           )}
+        </div>
+
+        <div className="flex overflow-x-auto rounded-full bg-neutral-100 p-1 text-sm">
+          {SORTS.map((s) => (
+            <button
+              key={s.value}
+              onClick={() => setSort(s.value)}
+              aria-pressed={sort === s.value}
+              className={`rounded-full px-3.5 py-1.5 font-medium whitespace-nowrap transition ${
+                sort === s.value
+                  ? "bg-white text-neutral-900 shadow-sm"
+                  : "text-neutral-500 hover:text-neutral-800"
+              }`}
+            >
+              {t(s.labelKey)}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Category filter chips (multi-select; none selected = all). */}
-      <div className="mb-6 flex flex-wrap gap-1.5">
+      <div className="mb-7 flex flex-wrap gap-2">
         <button
-          onClick={() => {
-            setCategories([]);
-            setPage(1);
-          }}
-          className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+          onClick={() => setCategories([])}
+          aria-pressed={categories.length === 0}
+          className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
             categories.length === 0
-              ? "bg-primary text-primary-foreground border-transparent"
-              : "hover:bg-accent"
+              ? "border-neutral-900 bg-neutral-900 text-white"
+              : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900"
           }`}
         >
           {t("filter.all")}
@@ -186,10 +233,10 @@ export function OffersFeed() {
               key={cat}
               onClick={() => toggleCategory(cat)}
               aria-pressed={active}
-              className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+              className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
                 active
-                  ? "bg-primary text-primary-foreground border-transparent"
-                  : "hover:bg-accent"
+                  ? "border-neutral-900 bg-neutral-900 text-white"
+                  : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900"
               }`}
             >
               {categoryLabel(cat, locale)}
@@ -202,7 +249,7 @@ export function OffersFeed() {
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-8 text-center text-sm text-destructive">
           {(error as Error).message}
         </div>
-      ) : !isPending && data.items.length === 0 ? (
+      ) : !isPending && offers.length === 0 ? (
         <div className="rounded-lg border px-4 py-12 text-center text-sm text-muted-foreground">
           <p>{t("offers.empty")}</p>
           {query && (
@@ -216,36 +263,35 @@ export function OffersFeed() {
           )}
         </div>
       ) : (
-        <div
-          className={`grid grid-cols-1 gap-4 transition-opacity sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 ${
-            isPlaceholderData ? "opacity-60" : ""
-          }`}
-        >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {isPending
             ? Array.from({ length: 8 }).map((_, i) => <OfferSkeleton key={i} />)
-            : data.items.map((offer) => <OfferCard key={offer.id} offer={offer} />)}
+            : offers.map((offer) => <OfferCard key={offer.id} offer={offer} />)}
         </div>
       )}
 
-      {data && data.pageCount > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="rounded-md border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-accent"
-          >
-            {t("pager.prev")}
-          </button>
-          <span className="text-sm text-muted-foreground">
-            {t("pager.page", { page: data.page, count: data.pageCount })}
-          </span>
-          <button
-            onClick={() => setPage((p) => (data && p < data.pageCount ? p + 1 : p))}
-            disabled={!!data && page >= data.pageCount}
-            className="rounded-md border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-accent"
-          >
-            {t("pager.next")}
-          </button>
+      {/* Infinite scroll footer: an invisible sentinel drives fetchNextPage, a
+          spinner shows while the next page loads, and once everything is loaded
+          a subtle end-of-list marker replaces them. */}
+      {!isError && !isPending && offers.length > 0 && (
+        <div className="mt-8">
+          {hasNextPage ? (
+            <>
+              <div ref={sentinelRef} aria-hidden className="h-px w-full" />
+              {isFetchingNextPage && (
+                <div className="flex justify-center py-6">
+                  <Loader2
+                    className="h-6 w-6 animate-spin text-muted-foreground"
+                    aria-hidden
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              {t("offers.end")}
+            </p>
+          )}
         </div>
       )}
     </section>

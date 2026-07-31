@@ -6,10 +6,18 @@ import { cn } from "@/lib/utils";
 import { useLang } from "@/components/language-provider";
 import { useFavoriteIds, useToggleFavorite } from "@/hooks/use-favorites";
 
+// Floating white circle that sits over the product image. `hover:text-red-500`
+// tints an unfilled heart red on hover (it inherits currentColor).
 const base =
-  "grid size-8 place-items-center rounded-full border bg-background/80 backdrop-blur transition-colors hover:bg-accent";
+  "grid size-9 place-items-center rounded-full border border-neutral-200 bg-white text-neutral-400 shadow-sm transition hover:scale-105 hover:text-red-500";
 
-export function FavoriteButton({ productId }: { productId: string }) {
+export function FavoriteButton({
+  productId,
+  className,
+}: {
+  productId: string;
+  className?: string;
+}) {
   const { t } = useLang();
   const { isSignedIn } = useAuth();
   const { data: ids } = useFavoriteIds();
@@ -19,8 +27,12 @@ export function FavoriteButton({ productId }: { productId: string }) {
   if (!isSignedIn) {
     return (
       <SignInButton mode="modal">
-        <button className={base} aria-label={t("fav.login")} title={t("fav.login")}>
-          <Heart className="size-4 text-muted-foreground" />
+        <button
+          className={cn(base, className)}
+          aria-label={t("fav.login")}
+          title={t("fav.login")}
+        >
+          <Heart className="size-[18px]" />
         </button>
       </SignInButton>
     );
@@ -34,12 +46,12 @@ export function FavoriteButton({ productId }: { productId: string }) {
       aria-pressed={isFav}
       aria-label={isFav ? t("fav.remove") : t("fav.add")}
       title={isFav ? t("fav.remove") : t("fav.add")}
-      className={base}
+      className={cn(base, className)}
     >
       <Heart
         className={cn(
-          "size-4 transition-colors",
-          isFav ? "fill-red-500 text-red-500" : "text-muted-foreground",
+          "size-[18px] transition-colors",
+          isFav && "fill-red-500 text-red-500",
         )}
       />
     </button>

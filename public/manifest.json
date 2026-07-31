@@ -1,0 +1,10 @@
+{
+  "name": "Bonusfinder",
+  "short_name": "Bonusfinder",
+  "description": "Alle supermarktbonussen op één plek.",
+  "lang": "nl-NL",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff"
+}

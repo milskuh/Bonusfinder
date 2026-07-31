@@ -5,6 +5,55 @@ session first. Dates are absolute.
 
 ---
 
+## 2026-07-30 — Infinite scroll for the offers feed
+
+Replaced the feed's **page-number pagination** with **infinite scroll**: offers
+load progressively as you approach the bottom instead of clicking prev/next.
+Almost entirely client-side — the response shape already carried
+`{ items, total, page, pageSize, pageCount }` (everything the cursor logic
+needs), and the **schema and scrapers are untouched**. The one server-side
+change is a sort tiebreaker in the offers query, forced by a latent pagination
+bug the feature exposed (see the fix below).
+
+### TL;DR
+
+- **Hook (`hooks/use-offers.ts`)** — `useQuery` → **`useInfiniteQuery`**. `page`
+  leaves `OffersQuery` (it's now the `pageParam`); the query key is the
+  serialized filters **minus page**, so changing any filter/sort cleanly resets
+  the query to page 1. `getNextPageParam` advances while `page < pageCount`
+  (derived from the real `total`) — a full last page still ends correctly, no
+  fragile `items.length === pageSize` guess.
+- **Feed (`components/offers/offers-feed.tsx`)** — dropped the prev/next pager;
+  flattens `data.pages` into one grid; an `IntersectionObserver` sentinel
+  (600 px `rootMargin`, disconnected on unmount) calls `fetchNextPage()` as it
+  nears the viewport. A `Loader2` spinner shows while fetching and a subtle
+  end-of-list marker once everything is loaded. Empty / error / initial-skeleton
+  states unchanged.
+- **i18n** — one new key `offers.end` ("Geen aanbiedingen meer" / "No more
+  offers") in both locales; no hardcoded strings.
+
+### Fix: filters showed the wrong products (offset pagination)
+
+The real bug behind "category filters don't work": the feed sorted by
+`createdAt DESC` only, but every offer from one ingest run shares a timestamp, so
+`OFFSET`-based pages returned **overlapping rows** (page 1 ∩ page 2 = 14 offers).
+Once flattened those duplicates became duplicate React `key`s, and when you then
+picked a category React couldn't reconcile the shrunken list — it stranded the
+old cards, so **"Vlees" showed coffee, tuna and yoghurt** while the count
+correctly read 39. Fixed at the source with a **unique `id` tiebreaker on every
+sort** (`lib/queries/offers.ts`) so pages can't overlap, plus a **de-dupe by id**
+when flattening pages (`offers-feed.tsx`) as a guard against any residual overlap
+from a concurrent ingest.
+
+### Also: scroll resets to the top on filter change
+
+Selecting a filter after scrolling deep otherwise left you stranded at the bottom
+of the new (shorter) result set (and nudged the observer to auto-load). Now
+scroll returns to the top whenever `query` / `sort` / `categories` change (first
+mount skipped, to keep deep-link / back-navigation scroll).
+
+---
+
 ## 2026-07-30 — Three new supermarkets (Jumbo, Aldi, Lidl)
 
 Added scrapers for **Jumbo, Aldi and Lidl**, taking the aggregator from two

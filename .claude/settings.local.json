@@ -61,7 +61,19 @@
       "Bash(git commit *)",
       "Bash(npx next *)",
       "Bash(echo \"LINT_EXIT=$?\")",
-      "Bash(netstat -ano)"
+      "Bash(netstat -ano)",
+      "Bash(npm test *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(git checkout *)",
+      "Bash(curl -s -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/126.0 Safari/537.36' --max-time 25 https://www.jumbo.com/robots.txt)",
+      "Bash(curl -s -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/126.0 Safari/537.36' --max-time 30 -o /tmp/jumbo.html -w 'HTTP %{http_code} size=%{size_download}\\\\n' https://www.jumbo.com/aanbiedingen/nu)",
+      "Bash(grep -oE \".{40}/api/[a-zA-Z0-9/_?=.-]{0,60}\" jumbo.html)",
+      "Bash(perl -ne 'if \\(/\"tags\"/\\) { $i=index\\($_,\"\\\\\"tags\\\\\"\"\\); print substr\\($_, $i-260, 620\\); exit }' jumbo.html)",
+      "Bash(perl -ne 'if \\(/\"volumeDiscounts\":\\\\[?\\\\{?\"__typename\"/\\) { $i=index\\($_,\"\\\\\"volumeDiscounts\\\\\"\"\\); print substr\\($_, $i, 300\\),\"\\\\n\"; exit }' jumbo.html)",
+      "Bash(perl -ne 'if \\(/\"PromotionTag\"/\\) { $i=index\\($_,\"\\\\\"PromotionTag\\\\\"\"\\); print substr\\($_, $i-40, 240\\),\"\\\\n\"; exit }' jumbo.html)",
+      "Bash(curl -s -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/126.0 Safari/537.36' --max-time 30 -o C:/Users/milan/AppData/Local/Temp/claude/C--Users-milan-Desktop-Aanbiedingscraper/302565aa-de4e-42e9-a4ff-944bc22338e5/scratchpad/jumbo.html https://www.jumbo.com/aanbiedingen/nu -w 'fetched HTTP %{http_code} size %{size_download}\\\\n')",
+      "Bash(sed -i 's#/tmp/jumbo.html#C:/Users/milan/AppData/Local/Temp/claude/C--Users-milan-Desktop-Aanbiedingscraper/302565aa-de4e-42e9-a4ff-944bc22338e5/scratchpad/jumbo.html#' C:/Users/milan/AppData/Local/Temp/claude/C--Users-milan-Desktop-Aanbiedingscraper/302565aa-de4e-42e9-a4ff-944bc22338e5/scratchpad/jumbo_probe.mjs)",
+      "Bash(node C:/Users/milan/AppData/Local/Temp/claude/C--Users-milan-Desktop-Aanbiedingscraper/302565aa-de4e-42e9-a4ff-944bc22338e5/scratchpad/jumbo_probe.mjs)"
     ]
   }
 }

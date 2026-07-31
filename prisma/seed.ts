@@ -10,16 +10,17 @@ import { PrismaClient } from "@prisma/client";
 
 const db = new PrismaClient();
 
-// Real Dutch supermarket chains. Only "hoogvliet" is backed by a scraper today
-// (see src/scrapers/); the others are kept as reference rows so their name/logo
-// are ready when a scraper is added for them. They carry no offers until then.
+// Real Dutch supermarket chains. Logos are self-hosted brand assets under
+// public/logos/ (referenced by web path, so they resolve the moment a store's
+// offers are ingested). Every store here has a scraper except "plus", which is
+// kept as a reference row (no local asset yet → keeps its remote logo).
 const supermarkets = [
-  { slug: "hoogvliet", name: "Hoogvliet", logoUrl: "https://logo.clearbit.com/hoogvliet.com" },
-  { slug: "ah", name: "Albert Heijn", logoUrl: "https://logo.clearbit.com/ah.nl" },
-  { slug: "jumbo", name: "Jumbo", logoUrl: "https://logo.clearbit.com/jumbo.com" },
-  { slug: "lidl", name: "Lidl", logoUrl: "https://logo.clearbit.com/lidl.nl" },
-  { slug: "aldi", name: "Aldi", logoUrl: "https://logo.clearbit.com/aldi.nl" },
-  { slug: "dirk", name: "Dirk", logoUrl: "https://logo.clearbit.com/dirk.nl" },
+  { slug: "hoogvliet", name: "Hoogvliet", logoUrl: "/logos/hoogvliet.png" },
+  { slug: "ah", name: "Albert Heijn", logoUrl: "/logos/ah.svg" },
+  { slug: "jumbo", name: "Jumbo", logoUrl: "/logos/jumbo.svg" },
+  { slug: "lidl", name: "Lidl", logoUrl: "/logos/lidl.svg" },
+  { slug: "aldi", name: "Aldi", logoUrl: "/logos/aldi.svg" },
+  { slug: "dirk", name: "Dirk", logoUrl: "/logos/dirk.svg" },
   { slug: "plus", name: "PLUS", logoUrl: "https://logo.clearbit.com/plus.nl" },
 ];
 

@@ -1,16 +1,21 @@
 // src/lib/queries/offers.ts
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import type { OfferFilters } from "@/lib/validation/filters";
+import type { OfferFilters, OfferSort } from "@/lib/validation/filters";
 
-const orderByMap = {
-  newest: { createdAt: "desc" },
+// Every sort ends with a unique `id` tiebreaker. Without it, offset pagination
+// (skip/take) over rows that share a sort value is non-deterministic: many
+// offers carry the same createdAt (one ingest run), so consecutive pages could
+// return overlapping rows → duplicate ids on the client → a corrupted infinite
+// feed. The id tiebreaker gives each sort a total order, so pages never overlap.
+const orderByMap: Record<OfferSort, Prisma.OfferOrderByWithRelationInput[]> = {
+  newest: [{ createdAt: "desc" }, { id: "asc" }],
   // discountPercent is nullable (deals like "1+1 gratis" have none) — keep those
   // out of the top of the "highest discount" sort.
-  discount: { discountPercent: { sort: "desc", nulls: "last" } },
-  price: { salePrice: { sort: "asc", nulls: "last" } },
-  unitPrice: { pricePerUnit: { sort: "asc", nulls: "last" } },
-} as const;
+  discount: [{ discountPercent: { sort: "desc", nulls: "last" } }, { id: "asc" }],
+  price: [{ salePrice: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+  unitPrice: [{ pricePerUnit: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+};
 
 function endOfToday(): Date {
   const d = new Date();

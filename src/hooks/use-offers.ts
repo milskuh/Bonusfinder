@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import type { OfferSort } from "@/lib/validation/filters";
 
 // Shape of a single offer as serialized by GET /api/offers. Note: Prisma
@@ -42,21 +42,22 @@ export type OffersResponse = {
   pageCount: number;
 };
 
+// Filters that drive the query. `page` is intentionally absent — it's the
+// infinite-query pageParam, not a caller-supplied filter (see useOffers).
 export type OffersQuery = {
   q?: string;
   sort?: OfferSort;
-  page?: number;
   pageSize?: number;
   supermarkets?: string[];
   categories?: string[];
   discountMin?: number;
 };
 
+/** Serialize just the filters (no page) — this doubles as the query cache key. */
 function toSearchParams(query: OffersQuery): URLSearchParams {
   const sp = new URLSearchParams();
   if (query.q) sp.set("q", query.q);
   if (query.sort) sp.set("sort", query.sort);
-  if (query.page) sp.set("page", String(query.page));
   if (query.pageSize) sp.set("pageSize", String(query.pageSize));
   if (query.supermarkets?.length) sp.set("supermarkets", query.supermarkets.join(","));
   if (query.categories?.length) sp.set("categories", query.categories.join(","));
@@ -64,7 +65,9 @@ function toSearchParams(query: OffersQuery): URLSearchParams {
   return sp;
 }
 
-async function fetchOffers(sp: URLSearchParams): Promise<OffersResponse> {
+async function fetchOffers(query: OffersQuery, page: number): Promise<OffersResponse> {
+  const sp = toSearchParams(query);
+  sp.set("page", String(page));
   const res = await fetch(`/api/offers?${sp.toString()}`);
   if (!res.ok) {
     throw new Error(`Kon aanbiedingen niet laden (${res.status})`);
@@ -73,10 +76,14 @@ async function fetchOffers(sp: URLSearchParams): Promise<OffersResponse> {
 }
 
 export function useOffers(query: OffersQuery = {}) {
-  const sp = toSearchParams(query);
-  return useQuery({
-    queryKey: ["offers", sp.toString()],
-    queryFn: () => fetchOffers(sp),
-    placeholderData: (prev) => prev, // keep previous page visible while paging
+  return useInfiniteQuery({
+    // Key over all filters + sort (but NOT page): changing any filter yields a
+    // new key, so the infinite query resets and refetches from page 1.
+    queryKey: ["offers", toSearchParams(query).toString()],
+    queryFn: ({ pageParam }) => fetchOffers(query, pageParam),
+    initialPageParam: 1,
+    // More pages remain while the last fetched page is below the total count.
+    getNextPageParam: (lastPage) =>
+      lastPage.page < lastPage.pageCount ? lastPage.page + 1 : undefined,
   });
 }
