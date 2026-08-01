@@ -74,6 +74,15 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* Bonusfinder brand palette — constant across light/dark. Exposes CSS vars
+   (var(--color-brand) …) and utilities (bg-brand, text-brand, ring-brand …). */
+@theme {
+  --color-brand: #147a50;
+  --color-brand-light: #2fb574;
+  --color-ink: #14201a;
+  --color-surface: #f9f9f7;
+}
+
 @layer base {
   * {
     border-color: var(--border);

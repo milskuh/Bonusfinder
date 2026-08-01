@@ -17,7 +17,7 @@ const db = new PrismaClient();
 const supermarkets = [
   { slug: "hoogvliet", name: "Hoogvliet", logoUrl: "/logos/hoogvliet.png" },
   { slug: "ah", name: "Albert Heijn", logoUrl: "/logos/ah.svg" },
-  { slug: "jumbo", name: "Jumbo", logoUrl: "/logos/jumbo.svg" },
+  { slug: "jumbo", name: "Jumbo", logoUrl: "/logos/jumbo.png" },
   { slug: "lidl", name: "Lidl", logoUrl: "/logos/lidl.svg" },
   { slug: "aldi", name: "Aldi", logoUrl: "/logos/aldi.svg" },
   { slug: "dirk", name: "Dirk", logoUrl: "/logos/dirk.svg" },

@@ -4,8 +4,9 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 // Stores whose wordmark is unreadable on a white chip get a dark chip instead.
-// Jumbo's logo is yellow, so it needs the near-black background for contrast.
-const NEEDS_DARK_CHIP = new Set(["jumbo"]);
+// Currently none: each store's logo reads fine on the white chip (Jumbo's logo
+// carries its own yellow background).
+const NEEDS_DARK_CHIP = new Set<string>();
 
 type Supermarket = { slug: string; name: string; logoUrl: string | null };
 

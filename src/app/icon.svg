@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Bonusfinder icon">
+  <rect width="512" height="512" rx="120" fill="#147A50"/>
+  <g fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="217" cy="209" r="116" stroke-width="39"/>
+    <path d="M302 295 L372 365" stroke-width="39"/>
+    <path d="M171 264 L256 155" stroke-width="27"/>
+  </g>
+  <circle cx="178" cy="171" r="20" fill="#FFFFFF"/>
+  <circle cx="248" cy="248" r="20" fill="#FFFFFF"/>
+</svg>
