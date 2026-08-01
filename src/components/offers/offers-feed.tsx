@@ -3,11 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Search, X } from "lucide-react";
 import { useOffers } from "@/hooks/use-offers";
+import { useSupermarkets } from "@/hooks/use-supermarkets";
 import type { OfferSort } from "@/lib/validation/filters";
 import { categoryLabel, CATEGORY_ORDER } from "@/lib/categories";
+import { supermarketBrand } from "@/lib/supermarkets";
 import { useLang } from "@/components/language-provider";
 import type { TKey } from "@/lib/i18n";
 import { OfferCard } from "./offer-card";
+import { SupermarketLogo } from "./supermarket-logo";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const SORTS: { value: OfferSort; labelKey: TKey }[] = [
@@ -40,6 +43,10 @@ export function OffersFeed() {
   const { t, locale } = useLang();
   const [sort, setSort] = useState<OfferSort>("newest");
   const [categories, setCategories] = useState<string[]>([]);
+  const [supermarkets, setSupermarkets] = useState<string[]>([]);
+  // The stores to offer as chips: only those with active offers (empty until
+  // loaded). Failure/empty simply renders no store row — the feed still works.
+  const { data: stores = [] } = useSupermarkets();
   // `rawQuery` mirrors the input on every keystroke; `query` is the debounced
   // term that actually drives the fetch + URL, so we don't fire a request per
   // keystroke.
@@ -47,15 +54,25 @@ export function OffersFeed() {
   const [query, setQuery] = useState("");
   const firstSyncRef = useRef(true);
 
-  // Hydrate the search term from the URL once, so a shared/refreshed link keeps
-  // its query. Read post-mount (not a lazy initializer) to avoid an SSR vs.
-  // client hydration mismatch on the input value.
+  // Hydrate the active filters from the URL once, so a shared/refreshed link
+  // keeps its search term, categories and stores. Read post-mount (not a lazy
+  // initializer) to avoid an SSR vs. client hydration mismatch. Multi-value
+  // params are comma-separated, matching parseOfferFilters on the server.
   useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get("q")?.trim() ?? "";
+    const sp = new URLSearchParams(window.location.search);
+    const list = (key: string) => {
+      const v = sp.get(key);
+      return v ? v.split(",").filter(Boolean) : [];
+    };
+    const fromUrl = sp.get("q")?.trim() ?? "";
     if (fromUrl) {
       setRawQuery(fromUrl);
       setQuery(fromUrl);
     }
+    const cats = list("categories");
+    if (cats.length) setCategories(cats);
+    const storeSlugs = list("supermarkets");
+    if (storeSlugs.length) setSupermarkets(storeSlugs);
   }, []);
 
   // Debounce keystrokes (~300 ms) into the effective search term.
@@ -64,22 +81,28 @@ export function OffersFeed() {
     return () => clearTimeout(id);
   }, [rawQuery]);
 
-  // On a new search term: mirror it to the URL (shareable, refresh-safe) via the
-  // history API — this avoids forcing a Suspense boundary that useSearchParams
-  // would require. The infinite query resets on its own because `query` is part
-  // of the query key. Skip the initial mount so we don't rewrite the URL before
-  // hydration. Other filters remain local state, as before.
+  // Mirror the active filters (search term, categories, stores) to the URL so a
+  // filtered view is shareable and survives refresh — via the history API, which
+  // avoids forcing the Suspense boundary that useSearchParams would require. The
+  // infinite query resets on its own because these are part of its query key.
+  // Multi-value params are comma-separated, matching parseOfferFilters. Skip the
+  // initial mount so we don't rewrite the URL before hydration.
   useEffect(() => {
     if (firstSyncRef.current) {
       firstSyncRef.current = false;
       return;
     }
     const params = new URLSearchParams(window.location.search);
-    if (query) params.set("q", query);
-    else params.delete("q");
+    const sync = (key: string, value: string) => {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    };
+    sync("q", query);
+    sync("categories", categories.join(","));
+    sync("supermarkets", supermarkets.join(","));
     const qs = params.toString();
     window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
-  }, [query]);
+  }, [query, categories, supermarkets]);
 
   // When the active filters change, jump back to the top. With infinite scroll
   // the page grows very tall, so switching filters while scrolled deep would
@@ -94,7 +117,7 @@ export function OffersFeed() {
       return;
     }
     window.scrollTo(0, 0);
-  }, [query, sort, categories]);
+  }, [query, sort, categories, supermarkets]);
 
   const {
     data,
@@ -108,6 +131,7 @@ export function OffersFeed() {
     q: query,
     sort,
     categories,
+    supermarkets,
     pageSize: PAGE_SIZE,
   });
 
@@ -148,6 +172,12 @@ export function OffersFeed() {
   const toggleCategory = (cat: string) => {
     setCategories((prev) =>
       prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat],
+    );
+  };
+
+  const toggleSupermarket = (slug: string) => {
+    setSupermarkets((prev) =>
+      prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug],
     );
   };
 
@@ -212,6 +242,71 @@ export function OffersFeed() {
           ))}
         </div>
       </div>
+
+      {/* Store filter chips (multi-select; none selected = all). Only stores
+          with active offers appear; each chip carries its brand logo + colour,
+          so a newly added store is styled automatically. Wraps/scrolls on
+          mobile like the category row. */}
+      {stores.length > 0 && (
+        <div className="mb-4">
+          <h2
+            id="store-filter-label"
+            className="mb-2 text-xs font-semibold tracking-wide text-neutral-500 uppercase"
+          >
+            {t("filter.stores")}
+          </h2>
+          <div
+            role="group"
+            aria-labelledby="store-filter-label"
+            className="flex flex-wrap gap-2"
+          >
+            <button
+              onClick={() => setSupermarkets([])}
+              aria-pressed={supermarkets.length === 0}
+              className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
+                supermarkets.length === 0
+                  ? "border-neutral-900 bg-neutral-900 text-white"
+                  : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900"
+              }`}
+            >
+              {t("filter.all")}
+            </button>
+            {stores.map((store) => {
+              const active = supermarkets.includes(store.slug);
+              const brand = supermarketBrand(store.slug);
+              return (
+                <button
+                  key={store.slug}
+                  onClick={() => toggleSupermarket(store.slug)}
+                  aria-pressed={active}
+                  aria-label={store.name}
+                  style={
+                    active
+                      ? {
+                          backgroundColor: brand.color,
+                          borderColor: brand.color,
+                          color: brand.foreground,
+                        }
+                      : undefined
+                  }
+                  className={`inline-flex items-center gap-2 rounded-full border py-1 pr-3.5 pl-1 text-sm font-medium transition ${
+                    active
+                      ? "shadow-sm"
+                      : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900"
+                  }`}
+                >
+                  {/* Logo is decorative here — the visible name is the chip's
+                      accessible label, so hide it from AT to avoid double-speak. */}
+                  <span aria-hidden="true" className="inline-flex">
+                    <SupermarketLogo supermarket={store} />
+                  </span>
+                  <span>{store.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Category filter chips (multi-select; none selected = all). */}
       <div className="mb-7 flex flex-wrap gap-2">
