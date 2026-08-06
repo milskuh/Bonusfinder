@@ -3,7 +3,11 @@
 // scrapers themselves so every source shares one consistent strategy:
 //
 //   * Supermarket  — upserted by slug.
-//   * Product      — matched by (name, brand); created on first sight, else refreshed.
+//   * Product      — matched by a normalised key (productMatchKey) that folds away
+//                    label noise across stores (diacritics, punctuation, word
+//                    order, pack size), so the same article at different
+//                    supermarkets collapses to one Product; created on first
+//                    sight, else refreshed. (Matching lives in product-match.ts.)
 //   * Offer        — updated in place, never wiped by a re-scrape, and matched
 //                    per (supermarket, ISO week of validFrom) so scraping one week
 //                    can't disturb another. This lets an early-published next-week
@@ -17,14 +21,11 @@
 //                    on every (e.g. daily) run.
 import { db } from "../lib/db";
 import { buildOfferPlan, type OfferWrite } from "./offer-plan";
+import { productMatchKey } from "./product-match";
 import type { ScrapedOffer, Scraper } from "./types";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
-
-/** Natural key for matching a product across runs. */
-const productKey = (name: string, brand: string | null) =>
-  `${name.trim().toLowerCase()} ${(brand ?? "").trim().toLowerCase()}`;
 
 export interface PersistResult {
   supermarket: string;
@@ -59,14 +60,32 @@ export async function persistOffers(
   // 2. Resolve products, creating any we haven't seen before. Pre-load the
   //    existing catalogue once to avoid a query per offer.
   const existing = await db.product.findMany({
-    select: { id: true, name: true, brand: true },
+    select: { id: true, name: true, brand: true, contentAmount: true, contentUnit: true },
   });
-  const idByKey = new Map(existing.map((p) => [productKey(p.name, p.brand), p.id]));
+  // Build the match index from the SAME normaliser applied to stored products, so
+  // an incoming offer and an existing product that denote the same article land
+  // on the same key. contentAmount is a Prisma Decimal → plain number.
+  const idByKey = new Map(
+    existing.map((p) => [
+      productMatchKey({
+        name: p.name,
+        brand: p.brand,
+        contentAmount: p.contentAmount == null ? null : Number(p.contentAmount),
+        contentUnit: p.contentUnit,
+      }),
+      p.id,
+    ]),
+  );
 
   let created = 0;
   const resolved: { offer: ScrapedOffer; productId: string }[] = [];
   for (const offer of offers) {
-    const key = productKey(offer.name, offer.brand);
+    const key = productMatchKey({
+      name: offer.name,
+      brand: offer.brand,
+      contentAmount: offer.contentAmount,
+      contentUnit: offer.contentUnit,
+    });
     let productId = idByKey.get(key);
     if (!productId) {
       const product = await db.product.create({
