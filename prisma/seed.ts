@@ -21,6 +21,8 @@ const supermarkets = [
   { slug: "lidl", name: "Lidl", logoUrl: "/logos/lidl.svg" },
   { slug: "aldi", name: "Aldi", logoUrl: "/logos/aldi.svg" },
   { slug: "dirk", name: "Dirk", logoUrl: "/logos/dirk.svg" },
+  { slug: "dekamarkt", name: "DekaMarkt", logoUrl: "/logos/deka.png" },
+  { slug: "gall", name: "Gall & Gall", logoUrl: "/logos/gall.jpg" },
   { slug: "plus", name: "PLUS", logoUrl: "https://logo.clearbit.com/plus.nl" },
 ];
 

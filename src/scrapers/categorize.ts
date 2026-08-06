@@ -32,7 +32,7 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
       "drumstick", "kipdij", "kippenpoot", "braadworst",
     ],
   },
-  // --- Soda / soft drinks, checked before the broader DRANKEN. ---
+  // --- Soda / soft drinks, checked before ALCOHOL / the broader DRANKEN. ---
   {
     category: Category.SODA,
     keywords: [
@@ -43,14 +43,26 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
       "icetea", "lipton", "fuze tea", "limonade", "ranja", "siroop",
     ],
   },
-  // --- Other drinks (juice, water, coffee, tea, alcohol). ---
+  // --- Alcohol (beer, wine, spirits), before the non-alcoholic DRANKEN so
+  //     "wijn"/"bier"/"whisky" get their own bucket. Checked AFTER SODA so
+  //     "ginger ale" (soft drink) isn't caught by "gin". Non-alcoholic look-alikes
+  //     ("0.0" / "alcoholvrij") are handled per-source (see gall.ts) since a
+  //     keyword alone can't tell an alcohol-free variant apart. ---
+  {
+    category: Category.ALCOHOL,
+    keywords: [
+      "bier", "pils", "pilsener", "radler", "wijn", "rosé", "prosecco", "cava",
+      "champagne", "mousserend", "wodka", "vodka", "whisky", "whiskey", "bourbon",
+      "rum", "likeur", "gin", "jenever", "vieux", "cognac", "brandy", "vermout",
+      "vermouth", "tequila", "sherry", "port", "aperitief", "gedistilleerd",
+    ],
+  },
+  // --- Other (non-alcoholic) drinks: juice, water, coffee, tea. ---
   {
     category: Category.DRANKEN,
     keywords: [
       "sap", "jus", "juice", "smoothie", "water", "spa", "bronwater", "koffie",
-      "capsule", "espresso", "senseo", "nespresso", "thee", "bier", "pils",
-      "wijn", "rosé", "prosecco", "cava", "champagne", "wodka", "whisky",
-      "rum", "likeur", "gin", "aperitief", "port", "drank",
+      "capsule", "espresso", "senseo", "nespresso", "thee", "drank",
     ],
   },
   // --- Eggs before dairy, so "eieren" doesn't fall into ZUIVEL. ---

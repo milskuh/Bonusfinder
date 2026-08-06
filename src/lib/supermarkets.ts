@@ -26,6 +26,8 @@ const BRANDS: Record<string, SupermarketBrand> = {
   aldi: { badge: "ALDI", color: "#00b4dc", foreground: "#ffffff" }, // Aldi blue
   lidl: { badge: "LIDL", color: "#0050aa", foreground: "#ffffff" }, // Lidl blue
   dirk: { badge: "DIRK", color: "#e30613", foreground: "#ffffff" }, // Dirk red (site theme colour)
+  dekamarkt: { badge: "DEKA", color: "#e6007e", foreground: "#ffffff" }, // DekaMarkt magenta
+  gall: { badge: "G&G", color: "#8b1a2b", foreground: "#ffffff" }, // Gall & Gall bordeaux red
 };
 
 /** Neutral identity for stores not yet in the map (keeps new slugs from crashing). */

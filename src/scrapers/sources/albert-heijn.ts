@@ -121,8 +121,8 @@ function mapSectionCategory(section: string | undefined): Category | null {
     case "Ontbijtgranen, beleg": return Category.ONTBIJT;
     case "Diepvries": return Category.DIEPVRIES;
     case "Koffie, thee":
-    case "Frisdrank, sappen, water":
-    case "Bier, wijn, aperitieven": return Category.DRANKEN;
+    case "Frisdrank, sappen, water": return Category.DRANKEN;
+    case "Bier, wijn, aperitieven": return Category.ALCOHOL;
     case "Drogisterij": return Category.DROGISTERIJ;
     case "Huishouden": return Category.HUISHOUDEN;
     case "Baby en kind": return Category.BABY_KIND;

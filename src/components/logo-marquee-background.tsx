@@ -9,9 +9,9 @@ import styles from "./logo-marquee-background.module.css";
 
 type Logo = { src: string; alt: string };
 
-// The six brand logos (files already in /public/logos). `alt` is a human label
-// kept for provenance and React keys; the rendered <img> uses alt="" because the
-// layer is decorative.
+// The brand logos (files already in /public/logos). `alt` is a human label kept
+// for provenance and React keys; the rendered <img> uses alt="" because the layer
+// is decorative.
 const LOGOS: Logo[] = [
   { src: "/logos/ah.svg", alt: "Albert Heijn" },
   { src: "/logos/jumbo.png", alt: "Jumbo" },
@@ -19,6 +19,8 @@ const LOGOS: Logo[] = [
   { src: "/logos/aldi.svg", alt: "Aldi" },
   { src: "/logos/dirk.svg", alt: "Dirk" },
   { src: "/logos/hoogvliet.png", alt: "Hoogvliet" },
+  { src: "/logos/deka.png", alt: "DekaMarkt" },
+  { src: "/logos/gall.jpg", alt: "Gall & Gall" },
 ];
 
 type Row = { offset: number; reverse: boolean; duration: number };
@@ -35,10 +37,10 @@ const ROWS: Row[] = [
   { offset: 3, reverse: false, duration: 42 },
 ];
 
-// How many copies of the 6-logo set make up each track. Must be EVEN: the track
+// How many copies of the 8-logo set make up each track. Must be EVEN: the track
 // is two identical halves and the CSS scrolls it by -50% (one half), so the loop
 // is seamless. One half must be wider than the viewport or the gutters go bare as
-// the track drifts — one set is ~860px wide, so 4 sets/half (~3400px) covers
+// the track drifts — one set is ~1150px wide, so 4 sets/half (~4600px) covers
 // every realistic screen. Total = COPIES/2 sets per half.
 const COPIES = 8;
 

@@ -27,7 +27,8 @@ enum Category {
   EIEREN // eieren
   KAAS
   BROOD_BANKET
-  DRANKEN // sappen, koffie, thee, water, bier, wijn
+  DRANKEN // sappen, koffie, thee, water (non-alcoholisch)
+  ALCOHOL // bier, wijn, sterke drank (Gall & Gall, slijterij)
   SODA // frisdrank / soda
   PASTA_RIJST // pasta, rijst, noedels, wereldkeuken
   SNACKS_SNOEP
