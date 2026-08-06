@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { ClerkProvider } from "@clerk/nextjs";
 import { shadcn } from "@clerk/ui/themes";
 import { Providers } from "./providers";
 import { HeaderNav } from "@/components/header-nav";
+import { LogoMarqueeBackground } from "@/components/logo-marquee-background";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/config";
 import "./globals.css";
 
@@ -33,17 +34,43 @@ export const metadata: Metadata = {
   },
 };
 
+// Tint the mobile browser chrome to match the page background in each scheme
+// (Next injects the matching <meta name="theme-color"> tags). The PWA install
+// colour lives separately in the manifest (src/app/manifest.ts).
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
+};
+
+// Apply the saved theme — or the OS colour-scheme when it's "system"/unset —
+// before first paint, so the design tokens (globals.css) and every `dark:`
+// utility resolve without a light→dark flash. <ThemeProvider> (providers.tsx)
+// keeps it in sync and drives the header toggle afterwards. Runs inline
+// (pre-hydration); <html suppressHydrationWarning> keeps React from complaining
+// about the class it can't see server-side.
+const themeScript = `(function(){try{var s=localStorage.getItem('theme');var m=window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.classList.toggle('dark',s==='dark'||((s===null||s==='system')&&m))}catch(e){}})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="nl" suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground antialiased">
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        {/* Ambient, faded supermarket-logo backdrop. Fixed at z-index -10 and
+            decorative, so it renders behind everything and shows through the
+            transparent page chrome. Kept just after the pre-paint theme script
+            (which must stay first) but before all rendered content. */}
+        <LogoMarqueeBackground />
         <ClerkProvider appearance={{ theme: shadcn }}>
           <Providers>
-            <header className="flex items-center justify-between border-b px-6 py-3">
+            {/* Opaque background so the fixed logo backdrop doesn't show through
+                the top bar — the logos stay in the gutters below it. */}
+            <header className="flex items-center justify-between border-b bg-background px-4 py-3 sm:px-6">
               <Link
                 href="/"
                 aria-label={`${APP_NAME} — home`}
-                className="inline-flex items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                className="inline-flex shrink-0 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
               >
                 {/* Below sm: icon only (its green tile reads on any background). */}
                 <Image

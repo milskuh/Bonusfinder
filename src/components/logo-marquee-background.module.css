@@ -1,0 +1,115 @@
+/* Styles for <LogoMarqueeBackground>: an ambient, faded carousel of supermarket
+   logos that drifts down the left & right gutters, behind the page. Purely
+   decorative.
+
+   TUNING KNOBS:
+   - .layer opacity ........ how present the logos feel. Intended range 0.15–0.20.
+   - .layer grayscale() .... how far the brand colours are muted toward grey.
+   - .layer --clear ........ half-width of the centred band kept logo-free so the
+                             deals / filters are never obscured. 36rem = half of
+                             the content column (max-w-6xl / 72rem). Bigger =
+                             wider clear centre, narrower gutter bands.
+   - .layer --fade ......... softness of the clear band's edges.
+   - .rotor rotate() ....... the tilt that echoes a diagonal drift. Set 0deg for a
+                             straight horizontal drift; keep scale() > 1 so the
+                             tilt can't expose an uncovered corner. */
+
+/* Full-viewport ambient layer, pinned behind all content (z-index below 0). It
+   is NOT rotated — the tilt lives on .rotor — so the centre mask below stays a
+   straight vertical channel aligned with the (un-tilted) content column. */
+.layer {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  overflow: hidden;
+  pointer-events: none;
+
+  opacity: 0.17; /* KNOB: 0.15–0.20 */
+  filter: grayscale(0.35); /* KNOB: mute the brand colours */
+
+  /* Mask out a centred, content-width band so drifting logos only ever show in
+     the left & right gutters, never behind the deals / filters. Soft-edged. On
+     viewports narrower than the band the whole layer fades out (no gutters to
+     fill). --clear is half the band; --fade is the edge softness. */
+  --clear: 36rem;
+  --fade: 3rem;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 calc(50% - var(--clear) - var(--fade)),
+    transparent calc(50% - var(--clear)),
+    transparent calc(50% + var(--clear)),
+    #000 calc(50% + var(--clear) + var(--fade))
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(50% - var(--clear) - var(--fade)),
+    transparent calc(50% - var(--clear)),
+    transparent calc(50% + var(--clear)),
+    #000 calc(50% + var(--clear) + var(--fade))
+  );
+}
+
+/* Rotated, oversized carrier for the rows. The tilt + scale live here so the
+   layer's centre mask stays vertical; scale keeps the corners covered after the
+   rotation. Rows are spread evenly top-to-bottom. */
+.rotor {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transform: rotate(-6deg) scale(1.3); /* KNOB: rotate 0deg = horizontal drift */
+}
+
+/* One horizontal lane. Clips its track, which is far wider than the viewport. */
+.row {
+  overflow: hidden;
+}
+
+/* The moving strip: two identical halves laid side by side (see the component —
+   the logo set is repeated an even number of times). width:max-content sizes it
+   to its content, so translateX(-50%) scrolls it by exactly one half's width;
+   because the halves are identical the loop is seamless. Each half is wider than
+   the viewport, so both gutters stay covered at every point of the scroll.
+   flex:none stops the lane shrinking it. Duration is set per-row inline. */
+.track {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  flex: none;
+  animation-name: marquee;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* Reverse lanes: same keyframes played backwards, i.e. translateX(-50% -> 0). */
+.reverse {
+  animation-direction: reverse;
+}
+
+.logo {
+  height: 52px;
+  width: auto; /* keep each logo's aspect ratio — Dirk is wider and must not distort */
+  object-fit: contain;
+  /* Equal gap after EVERY logo, the last one included, so the two halves are
+     identical and the -50% loop lines up perfectly. */
+  margin-right: 64px;
+  flex: none;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Honour a reduced-motion preference: freeze the drift. The faded logos stay
+   as a static backdrop. */
+@media (prefers-reduced-motion: reduce) {
+  .track {
+    animation: none;
+  }
+}

@@ -73,6 +73,7 @@ model Product {
   offers       Offer[]
   priceHistory PriceHistory[]
   favorites    Favorite[]
+  basketItems  BasketItem[]
 
   @@index([category])
   @@index([subcategory])
@@ -134,7 +135,8 @@ model User {
   externalId String   @unique // Clerk user id
   createdAt  DateTime @default(now())
 
-  favorites Favorite[]
+  favorites   Favorite[]
+  basketItems BasketItem[]
 }
 
 model Favorite {
@@ -149,5 +151,26 @@ model Favorite {
   createdAt DateTime @default(now())
 
   @@unique([userId, productId]) // -> compound key userId_productId (used in favorites route)
+  @@index([productId])
+}
+
+model BasketItem {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // How many of this product the user wants. Line total = unit salePrice * quantity
+  // (see src/lib/queries/basket.ts). Multi-buy promos are handled via the
+  // nullable-price rule there, not modelled into this quantity.
+  quantity Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId]) // -> compound key userId_productId (used in basket route)
   @@index([productId])
 }

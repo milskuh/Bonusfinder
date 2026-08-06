@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useLang } from "@/components/language-provider";
 import { SupermarketLogo } from "./supermarket-logo";
 import { FavoriteButton } from "./favorite-button";
+import { BasketButton } from "./basket-button";
 import type { OfferListItem } from "@/hooks/use-offers";
 
 const euro = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" });
@@ -83,18 +84,18 @@ function PriceTag({
   lead: string;
 }) {
   if (sale == null) {
-    return <div className="text-xl font-bold tracking-tight text-neutral-900">{lead}</div>;
+    return <div className="text-xl font-bold tracking-tight text-card-foreground">{lead}</div>;
   }
   const { whole, cents } = splitEuro(sale);
   return (
     <div className="flex items-baseline gap-2">
-      <div className="flex items-start tracking-tight tabular-nums text-neutral-900">
+      <div className="flex items-start tracking-tight tabular-nums text-card-foreground">
         <span className="mt-0.5 text-base font-semibold">€</span>
         <span className="text-3xl leading-none font-extrabold">{whole}</span>
         <span className="mt-0.5 text-lg font-bold">{cents}</span>
       </div>
       {original != null && (
-        <span className="text-sm text-neutral-400 line-through tabular-nums">
+        <span className="text-sm text-muted-foreground line-through tabular-nums">
           {euro.format(original)}
         </span>
       )}
@@ -108,6 +109,12 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
   const sale = offer.salePrice != null ? Number(offer.salePrice) : null;
   const original = offer.originalPrice != null ? Number(offer.originalPrice) : null;
   const discount = offer.discountPercent ?? 0;
+  // For a not-yet-started (next-week) offer the end date alone is ambiguous, so
+  // show the full "from t/m until" window; a running offer keeps the compact
+  // "t/m until" (its start is already in the past).
+  const validFrom = new Date(offer.validFrom);
+  const validUntil = new Date(offer.validUntil);
+  const isUpcoming = validFrom.getTime() > Date.now();
   const dealText = offerText(offer.offerText);
   // Prefer the English product name when the site is in English and a
   // translation exists; otherwise fall back to the original Dutch name.
@@ -122,7 +129,7 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
   const priceLead = dealText ?? (discount > 0 ? `-${discount}%` : t("card.bonus"));
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-neutral-200 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl">
+    <div className="group relative flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-border transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl">
       <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-neutral-50 to-neutral-100">
         <ProductImage
           src={offer.product.imageUrl}
@@ -133,8 +140,9 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
         <div className="absolute top-3 left-3">
           <SupermarketLogo supermarket={offer.supermarket} />
         </div>
-        <div className="absolute top-3 right-3">
+        <div className="absolute top-3 right-3 flex flex-col gap-2">
           <FavoriteButton productId={offer.product.id} />
+          <BasketButton productId={offer.product.id} />
         </div>
 
         <div className="absolute bottom-3 left-3">
@@ -167,12 +175,12 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
             href={offer.product.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="line-clamp-2 min-h-10 text-sm leading-snug font-medium text-neutral-800 hover:underline"
+            className="line-clamp-2 min-h-10 text-sm leading-snug font-medium text-card-foreground hover:underline"
           >
             {productName}
           </a>
         ) : (
-          <h3 className="line-clamp-2 min-h-10 text-sm leading-snug font-medium text-neutral-800">
+          <h3 className="line-clamp-2 min-h-10 text-sm leading-snug font-medium text-card-foreground">
             {productName}
           </h3>
         )}
@@ -181,11 +189,16 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
           <PriceTag sale={sale} original={original} lead={priceLead} />
         </div>
 
-        <div className="mt-2 flex items-center justify-between border-t border-neutral-100 pt-2.5 text-xs text-neutral-400">
+        <div className="mt-2 flex items-center justify-between border-t border-border pt-2.5 text-xs text-muted-foreground">
           <span className="tabular-nums">{unit ?? " "}</span>
-          <span className="inline-flex items-center gap-1">
-            <Calendar className="size-3" aria-hidden />
-            {t("card.validUntilShort", { date: formatDate(new Date(offer.validUntil)) })}
+          <span className="inline-flex items-center gap-1 whitespace-nowrap">
+            <Calendar className="size-3 shrink-0" aria-hidden />
+            {isUpcoming
+              ? t("card.validRange", {
+                  from: formatDate(validFrom),
+                  until: formatDate(validUntil),
+                })
+              : t("card.validUntilShort", { date: formatDate(validUntil) })}
           </span>
         </div>
       </div>

@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Search, X } from "lucide-react";
+import { ChevronDown, Loader2, Search, X } from "lucide-react";
 import { useOffers } from "@/hooks/use-offers";
 import { useSupermarkets } from "@/hooks/use-supermarkets";
-import type { OfferSort } from "@/lib/validation/filters";
+import type { OfferSort, Timeframe } from "@/lib/validation/filters";
 import { categoryLabel, CATEGORY_ORDER } from "@/lib/categories";
 import { supermarketBrand } from "@/lib/supermarkets";
 import { useLang } from "@/components/language-provider";
@@ -12,6 +12,7 @@ import type { TKey } from "@/lib/i18n";
 import { OfferCard } from "./offer-card";
 import { SupermarketLogo } from "./supermarket-logo";
 import { Skeleton } from "@/components/ui/skeleton";
+import styles from "./offers-feed.module.css";
 
 const SORTS: { value: OfferSort; labelKey: TKey }[] = [
   { value: "newest", labelKey: "sort.newest" },
@@ -20,17 +21,22 @@ const SORTS: { value: OfferSort; labelKey: TKey }[] = [
   { value: "unitPrice", labelKey: "sort.unitPrice" },
 ];
 
+const TIMEFRAMES: { value: Timeframe; labelKey: TKey }[] = [
+  { value: "current", labelKey: "timeframe.current" },
+  { value: "upcoming", labelKey: "timeframe.upcoming" },
+];
+
 const PAGE_SIZE = 24;
 
 function OfferSkeleton() {
   return (
-    <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-neutral-200">
+    <div className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-border">
       <Skeleton className="aspect-square w-full rounded-none" />
       <div className="flex flex-col gap-2 p-4">
         <Skeleton className="h-3.5 w-full" />
         <Skeleton className="h-3.5 w-2/3" />
         <Skeleton className="mt-2 h-8 w-24" />
-        <div className="mt-2 flex items-center justify-between border-t border-neutral-100 pt-2.5">
+        <div className="mt-2 flex items-center justify-between border-t border-border pt-2.5">
           <Skeleton className="h-3 w-16" />
           <Skeleton className="h-3 w-14" />
         </div>
@@ -42,6 +48,7 @@ function OfferSkeleton() {
 export function OffersFeed() {
   const { t, locale } = useLang();
   const [sort, setSort] = useState<OfferSort>("newest");
+  const [timeframe, setTimeframe] = useState<Timeframe>("current");
   const [categories, setCategories] = useState<string[]>([]);
   const [supermarkets, setSupermarkets] = useState<string[]>([]);
   // The stores to offer as chips: only those with active offers (empty until
@@ -73,6 +80,7 @@ export function OffersFeed() {
     if (cats.length) setCategories(cats);
     const storeSlugs = list("supermarkets");
     if (storeSlugs.length) setSupermarkets(storeSlugs);
+    if (sp.get("timeframe") === "upcoming") setTimeframe("upcoming");
   }, []);
 
   // Debounce keystrokes (~300 ms) into the effective search term.
@@ -100,9 +108,11 @@ export function OffersFeed() {
     sync("q", query);
     sync("categories", categories.join(","));
     sync("supermarkets", supermarkets.join(","));
+    // Only 'upcoming' is written; 'current' is the default, so it stays out of the URL.
+    sync("timeframe", timeframe === "upcoming" ? "upcoming" : "");
     const qs = params.toString();
     window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
-  }, [query, categories, supermarkets]);
+  }, [query, categories, supermarkets, timeframe]);
 
   // When the active filters change, jump back to the top. With infinite scroll
   // the page grows very tall, so switching filters while scrolled deep would
@@ -117,7 +127,7 @@ export function OffersFeed() {
       return;
     }
     window.scrollTo(0, 0);
-  }, [query, sort, categories, supermarkets]);
+  }, [query, sort, timeframe, categories, supermarkets]);
 
   const {
     data,
@@ -130,6 +140,7 @@ export function OffersFeed() {
   } = useOffers({
     q: query,
     sort,
+    timeframe,
     categories,
     supermarkets,
     pageSize: PAGE_SIZE,
@@ -148,6 +159,14 @@ export function OffersFeed() {
     return true;
   });
   const total = data?.pages[0]?.total ?? null;
+
+  // Empty-state copy. For an unfiltered 'next week' view, the deals simply aren't
+  // published yet (see Phase 0: e.g. AH reveals them only from Friday), so
+  // reassure rather than imply an empty category. A search/filter miss keeps the
+  // generic message.
+  const noNarrowing = !query && categories.length === 0 && supermarkets.length === 0;
+  const emptyMessage =
+    timeframe === "upcoming" && noNarrowing ? t("offers.emptyUpcoming") : t("offers.empty");
 
   // Infinite scroll: load the next page when the sentinel below the grid nears
   // the viewport. rootMargin pre-fetches ~a screen early so scrolling stays
@@ -169,6 +188,61 @@ export function OffersFeed() {
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  // Scroll-reveal fallback. Where CSS scroll-driven animations are supported
+  // (animation-timeline: view()), the stylesheet reveals each panel/card on its
+  // own and this effect bails — no JS. Otherwise we drive the same reveal with
+  // an IntersectionObserver, marking elements .revealShown as they enter. A
+  // MutationObserver re-scans so cards added by infinite scroll (and the store
+  // sidebar, which mounts only once data loads) are picked up too. Skipped under
+  // prefers-reduced-motion, where the CSS leaves everything in its final state.
+  const sectionRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const container = sectionRef.current;
+    if (!container) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const supportsViewTimeline =
+      typeof CSS !== "undefined" && CSS.supports("animation-timeline: view()");
+    if (supportsViewTimeline) return;
+
+    const all = () =>
+      container.querySelectorAll<HTMLElement>(`.${styles.reveal}`);
+    // No IntersectionObserver (very old browsers): just show everything, since
+    // the fallback CSS has hidden it up front.
+    if (!("IntersectionObserver" in window)) {
+      all().forEach((el) => el.classList.add(styles.revealShown));
+      return;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add(styles.revealShown);
+            io.unobserve(entry.target);
+          }
+        }
+      },
+      { rootMargin: "0px 0px -8% 0px" },
+    );
+    let raf = 0;
+    const scan = () => {
+      raf = 0;
+      all().forEach((el) => {
+        if (!el.classList.contains(styles.revealShown)) io.observe(el);
+      });
+    };
+    scan();
+    const mo = new MutationObserver(() => {
+      if (!raf) raf = requestAnimationFrame(scan);
+    });
+    mo.observe(container, { childList: true, subtree: true });
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
   const toggleCategory = (cat: string) => {
     setCategories((prev) =>
       prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat],
@@ -184,29 +258,36 @@ export function OffersFeed() {
   const clearSearch = () => setRawQuery("");
 
   return (
-    <section className="mx-auto max-w-6xl px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
-          {t("offers.title")}
-        </h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          {total !== null ? t("offers.count", { n: total }) : t("offers.loading")}
-        </p>
-      </div>
+    <section ref={sectionRef} className="mx-auto max-w-6xl px-6 py-8">
+      <header className={`${styles.panel} ${styles.header} ${styles.reveal} mb-6`}>
+        <div className={styles.headerText}>
+          <h1 className={styles.headerTitle}>{t("offers.title")}</h1>
+          <p className={styles.headerSubtitle}>{t("offers.subtitle")}</p>
+        </div>
+        {/* Live count pill — reuses the real active-offer total. Hidden until the
+            first page resolves (total === null while loading). */}
+        {total !== null && (
+          <span className={styles.countPill}>
+            <span className={styles.countDot} aria-hidden />
+            {t(timeframe === "upcoming" ? "offers.upcomingPill" : "offers.activePill", { n: total })}
+          </span>
+        )}
+      </header>
 
       <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
-        {/* Store filter as a left sidebar (multi-select; none selected = all).
-            Only stores with active offers appear; each chip carries its brand
-            logo + colour, so a newly added store is styled automatically. A
-            horizontal wrapping row on mobile, a vertical list on desktop.
-            From lg up it's sticky so it tracks the scroll like the filter bar:
-            `self-start` stops the flex item stretching to the row's full height
-            (which would leave sticky no room to travel), and `top-0` matches the
-            bar since the app header scrolls away. Deliberately NOT sticky on
-            mobile — there it's a row stacked above the (also-sticky) filter bar,
-            so pinning both would collide them at the top. */}
+        {/* Store filter as a left sidebar panel (multi-select; none selected =
+            all). Only stores with active offers appear; each chip carries its
+            brand logo + colour, so a newly added store is styled automatically.
+            A horizontal wrapping row on mobile, a vertical list on desktop.
+            `lg:self-start` keeps the panel hugging its content (not stretched to
+            the row's full height) whether or not it sticks. From lg up it's
+            pinned via styles.sidebar — but only behind prefers-reduced-motion, so
+            reduced-motion users keep it in normal flow. Deliberately NOT sticky
+            on mobile, where it stacks above the (also-sticky) filter bar. */}
         {stores.length > 0 && (
-          <aside className="lg:sticky lg:top-0 lg:self-start lg:w-48 lg:shrink-0">
+          <aside
+            className={`${styles.panel} ${styles.sidebar} ${styles.reveal} lg:w-56 lg:shrink-0 lg:self-start`}
+          >
             {/* No visible heading — the brand chips make it self-evidently the
                 store filter. The accessible name lives on the group instead. */}
             <div
@@ -217,10 +298,10 @@ export function OffersFeed() {
               <button
                 onClick={() => setSupermarkets([])}
                 aria-pressed={supermarkets.length === 0}
-                className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
+                className={`rounded-full border px-3.5 py-2 text-sm font-medium transition ${
                   supermarkets.length === 0
-                    ? "border-neutral-900 bg-neutral-900 text-white"
-                    : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900"
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
                 }`}
               >
                 {t("filter.all")}
@@ -243,10 +324,10 @@ export function OffersFeed() {
                           }
                         : undefined
                     }
-                    className={`inline-flex items-center gap-2 rounded-full border py-1 pr-3.5 pl-1 text-sm font-medium transition ${
+                    className={`inline-flex items-center gap-2 rounded-full border py-1.5 pr-3.5 pl-1 text-sm font-medium transition ${
                       active
                         ? "shadow-sm"
-                        : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900"
+                        : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
                     }`}
                   >
                     {/* Logo is decorative here — the visible name is the chip's
@@ -264,20 +345,46 @@ export function OffersFeed() {
 
         {/* Main column: search + sort, category filters, and the results grid. */}
         <div className="min-w-0 flex-1">
-          {/* Filter bar — sticky so the sort + category controls stay reachable
-              while the grid scrolls beneath it. `top-0` because the app header
-              (layout.tsx) is a normal-flow element that scrolls away with the
-              page; if it's ever made sticky, offset this by its height. The
+          {/* Filter bar panel — sticky so the sort + category controls stay
+              reachable while the grid scrolls beneath it. `top-0` because the app
+              header (layout.tsx) is a normal-flow element that scrolls away with
+              the page; if it's ever made sticky, offset this by its height. The
               document itself is the scroll container (no overflow:auto/hidden on
-              any ancestor), so position:sticky resolves against the viewport.
-              The frosted background + bottom border keep grid cards from
-              bleeding through as they scroll underneath. */}
-          <div className="sticky top-0 z-30 mb-6 flex flex-col gap-3 border-b border-neutral-200 bg-white/80 py-3 backdrop-blur-md">
+              any ancestor), so position:sticky resolves against the viewport. The
+              panel's own opaque surface covers grid cards scrolling underneath,
+              so no frosted backdrop is needed. */}
+          <div
+            className={`${styles.panel} ${styles.reveal} sticky top-0 z-30 mb-6 flex flex-col gap-2.5`}
+          >
+            {/* Timeframe: this week vs. next week's ad. A primary view switch, so
+                it sits above the search/sort row. Same segmented-control styling
+                as the desktop sort control for visual consistency. */}
+            <div
+              role="group"
+              aria-label={t("timeframe.label")}
+              className="flex self-start rounded-full bg-muted p-1 text-sm"
+            >
+              {TIMEFRAMES.map((tf) => (
+                <button
+                  key={tf.value}
+                  onClick={() => setTimeframe(tf.value)}
+                  aria-pressed={timeframe === tf.value}
+                  className={`rounded-full px-4 py-1.5 font-medium whitespace-nowrap transition ${
+                    timeframe === tf.value
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {t(tf.labelKey)}
+                </button>
+              ))}
+            </div>
+
             {/* Search (debounced, Postgres FTS) + sort as a segmented control. */}
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="relative w-full lg:max-w-sm">
+            <div className="flex items-center gap-2 lg:gap-3 lg:justify-between">
+              <div className="relative min-w-0 flex-1 lg:max-w-sm">
                 <Search
-                  className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-neutral-400"
+                  className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
                   aria-hidden
                 />
                 <input
@@ -290,21 +397,47 @@ export function OffersFeed() {
                   }}
                   placeholder={t("search.placeholder")}
                   aria-label={t("search.placeholder")}
-                  className="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pr-10 pl-11 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900"
+                  // text-base (16px) on mobile stops iOS Safari auto-zooming on
+                  // focus; shrink to text-sm from lg up where the field is compact.
+                  className="w-full rounded-xl border border-border bg-card py-2.5 pr-10 pl-11 text-base text-foreground outline-none transition placeholder:text-muted-foreground focus:border-foreground focus:ring-2 focus:ring-foreground lg:text-sm"
                 />
                 {rawQuery && (
                   <button
                     type="button"
                     onClick={clearSearch}
                     aria-label={t("search.clear")}
-                    className="absolute top-1/2 right-2.5 grid size-6 -translate-y-1/2 place-items-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+                    className="absolute top-1/2 right-2 grid size-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <X className="size-4" />
                   </button>
                 )}
               </div>
 
-              <div className="flex overflow-x-auto rounded-full bg-neutral-100 p-1 text-sm">
+              {/* Sort as a native <select> on mobile: a full-height touch target
+                  that opens the OS picker, so all four options stay reachable
+                  without the segmented control overflowing the narrow row. */}
+              <div className="relative max-w-[40%] shrink-0 lg:hidden">
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as OfferSort)}
+                  aria-label={t("sort.label")}
+                  className="w-full appearance-none rounded-xl border border-border bg-card py-2.5 pr-9 pl-3.5 text-base font-medium text-foreground outline-none focus:border-foreground focus:ring-2 focus:ring-foreground"
+                >
+                  {SORTS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {t(s.labelKey)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden
+                />
+              </div>
+
+              {/* The same options as a segmented control from lg up, where the
+                  row is wide enough to show all four inline. */}
+              <div className="hidden rounded-full bg-muted p-1 text-sm lg:flex">
                 {SORTS.map((s) => (
                   <button
                     key={s.value}
@@ -312,8 +445,8 @@ export function OffersFeed() {
                     aria-pressed={sort === s.value}
                     className={`rounded-full px-3.5 py-1.5 font-medium whitespace-nowrap transition ${
                       sort === s.value
-                        ? "bg-white text-neutral-900 shadow-sm"
-                        : "text-neutral-500 hover:text-neutral-800"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {t(s.labelKey)}
@@ -325,87 +458,106 @@ export function OffersFeed() {
             {/* Category filter chips (multi-select; none selected = all). On
                 mobile they scroll horizontally as a single row so the sticky bar
                 stays compact; from lg up they wrap onto multiple lines. */}
-            <div className="flex flex-nowrap gap-2 overflow-x-auto pb-0.5 lg:flex-wrap lg:overflow-x-visible">
-              <button
-                onClick={() => setCategories([])}
-                aria-pressed={categories.length === 0}
-                className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
-                  categories.length === 0
-                    ? "border-neutral-900 bg-neutral-900 text-white"
-                    : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900"
-                }`}
-              >
-                {t("filter.all")}
-              </button>
-              {CATEGORY_ORDER.map((cat) => {
-                const active = categories.includes(cat);
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => toggleCategory(cat)}
-                    aria-pressed={active}
-                    className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
-                      active
-                        ? "border-neutral-900 bg-neutral-900 text-white"
-                        : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900"
-                    }`}
-                  >
-                    {categoryLabel(cat, locale)}
-                  </button>
-                );
-              })}
+            <div className="relative">
+              <div className="flex flex-nowrap gap-2 overflow-x-auto pb-0.5 lg:flex-wrap lg:overflow-x-visible">
+                <button
+                  onClick={() => setCategories([])}
+                  aria-pressed={categories.length === 0}
+                  className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition ${
+                    categories.length === 0
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                  }`}
+                >
+                  {t("filter.all")}
+                </button>
+                {CATEGORY_ORDER.map((cat) => {
+                  const active = categories.includes(cat);
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => toggleCategory(cat)}
+                      aria-pressed={active}
+                      className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition ${
+                        active
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                      }`}
+                    >
+                      {categoryLabel(cat, locale)}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Right-edge fade hinting the chip row scrolls on mobile (gone
+                  from lg up, where the chips wrap onto multiple lines instead). */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent lg:hidden"
+              />
             </div>
           </div>
 
-          {isError ? (
-            <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-8 text-center text-sm text-destructive">
-              {(error as Error).message}
-            </div>
-          ) : !isPending && offers.length === 0 ? (
-            <div className="rounded-lg border px-4 py-12 text-center text-sm text-muted-foreground">
-              <p>{t("offers.empty")}</p>
-              {query && (
-                <button
-                  type="button"
-                  onClick={clearSearch}
-                  className="mt-3 rounded-md border px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
-                >
-                  {t("search.clear")}
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {isPending
-                ? Array.from({ length: 8 }).map((_, i) => <OfferSkeleton key={i} />)
-                : offers.map((offer) => <OfferCard key={offer.id} offer={offer} />)}
-            </div>
-          )}
+          {/* Results panel — holds the loading skeletons, error/empty states, the
+              offer grid, and the infinite-scroll footer. */}
+          <div className={`${styles.panel} ${styles.reveal}`}>
+            {isError ? (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-8 text-center text-sm text-destructive">
+                {(error as Error).message}
+              </div>
+            ) : !isPending && offers.length === 0 ? (
+              <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+                <p>{emptyMessage}</p>
+                {query && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="mt-3 rounded-md border px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
+                  >
+                    {t("search.clear")}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {isPending
+                  ? Array.from({ length: 8 }).map((_, i) => <OfferSkeleton key={i} />)
+                  : // Each card sits in a reveal wrapper (not the card itself) so
+                    // the enter animation's transform can't clash with the card's
+                    // own hover-lift transform. h-full keeps cards equal-height.
+                    offers.map((offer) => (
+                      <div key={offer.id} className={styles.reveal}>
+                        <OfferCard offer={offer} />
+                      </div>
+                    ))}
+              </div>
+            )}
 
-          {/* Infinite scroll footer: an invisible sentinel drives fetchNextPage, a
-              spinner shows while the next page loads, and once everything is loaded
-              a subtle end-of-list marker replaces them. */}
-          {!isError && !isPending && offers.length > 0 && (
-            <div className="mt-8">
-              {hasNextPage ? (
-                <>
-                  <div ref={sentinelRef} aria-hidden className="h-px w-full" />
-                  {isFetchingNextPage && (
-                    <div className="flex justify-center py-6">
-                      <Loader2
-                        className="h-6 w-6 animate-spin text-muted-foreground"
-                        aria-hidden
-                      />
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  {t("offers.end")}
-                </p>
-              )}
-            </div>
-          )}
+            {/* Infinite scroll footer: an invisible sentinel drives fetchNextPage,
+                a spinner shows while the next page loads, and once everything is
+                loaded a subtle end-of-list marker replaces them. */}
+            {!isError && !isPending && offers.length > 0 && (
+              <div className="mt-8">
+                {hasNextPage ? (
+                  <>
+                    <div ref={sentinelRef} aria-hidden className="h-px w-full" />
+                    {isFetchingNextPage && (
+                      <div className="flex justify-center py-6">
+                        <Loader2
+                          className="h-6 w-6 animate-spin text-muted-foreground"
+                          aria-hidden
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    {t("offers.end")}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </section>

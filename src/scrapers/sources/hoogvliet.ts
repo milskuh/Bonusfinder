@@ -10,6 +10,13 @@
 // We collect every article id from the hotspots, then fetch each product page
 // and parse the deal from its server-rendered HTML.
 //
+// Hoogvliet publishes NEXT week's folder a few days before the current one ends,
+// so both are live on /folder at once (its promo week runs Wed–Tue). We scrape
+// the two newest folders — the current week and, when available, next week (which
+// carries a future validFrom) — so "next week" deals show ahead of rollover.
+// Anything already past its validity (e.g. a stale folder still linked) is
+// dropped. See offer-plan.ts / persist.ts for how the two weeks coexist in the DB.
+//
 // robots.txt: this approach only touches ALLOWED paths — `/aanbiedingen/<id>`
 // product pages and the Publitas folder JSON. It never hits the Disallowed
 // `/INTERSHOP/` webshop endpoints. We stay gentle regardless: one request at a
@@ -159,25 +166,29 @@ export function spreadLabels(spreadCount: number): string[] {
 // --- Discovery --------------------------------------------------------------
 
 /**
- * Find the current folder id (e.g. "folder_2026_31") from the folder landing
- * page. The page mixes a link to the current folder ("folder-2026-31") with the
- * occasional stale reference, and uses both dash and underscore forms, so we
- * collect every "folder<sep>YEAR<sep>WEEK" and pick the newest (year, week),
- * returning the underscore form used by the folder.hoogvliet.com host.
+ * Pick the newest folder ids (e.g. ["folder_2026_32", "folder_2026_31"]) from the
+ * folder landing page. The page mixes the current folder with next week's — and
+ * the occasional stale reference — using both dash and underscore forms, so we
+ * collect every "folder<sep>YEAR<sep>WEEK", dedupe, sort by (year, week) newest
+ * first, and take the top `limit`. That yields the current + upcoming week when
+ * both are published (and excludes older stale references, which have lower week
+ * numbers). Ids are returned in the underscore form the folder.hoogvliet.com host
+ * uses. A stale folder that still sneaks in is dropped later by the validity
+ * filter in scrape().
  */
-export function pickFolderId(html: string): string | null {
-  const matches = [...html.matchAll(/folder[-_](\d{4})[-_](\d{1,2})/g)];
-  if (matches.length === 0) return null;
-  const best = matches
-    .map((m) => ({ year: Number(m[1]), week: Number(m[2]) }))
-    .sort((a, b) => b.year - a.year || b.week - a.week)[0];
-  return `folder_${best.year}_${best.week}`;
-}
-
-async function currentFolderId(): Promise<string> {
-  const id = pickFolderId(await httpText(`${ORIGIN}/folder`));
-  if (!id) throw new Error("Could not find the current folder id on /folder.");
-  return id;
+export function pickFolderIds(html: string, limit = 2): string[] {
+  const seen = new Set<string>();
+  const weeks: { year: number; week: number }[] = [];
+  for (const m of html.matchAll(/folder[-_](\d{4})[-_](\d{1,2})/g)) {
+    const key = `${m[1]}_${m[2]}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    weeks.push({ year: Number(m[1]), week: Number(m[2]) });
+  }
+  return weeks
+    .sort((a, b) => b.year - a.year || b.week - a.week)
+    .slice(0, limit)
+    .map((w) => `folder_${w.year}_${w.week}`);
 }
 
 type Hotspot = { type?: string; url?: string };
@@ -209,15 +220,11 @@ async function collectArticleIds(folderId: string): Promise<string[]> {
 
 // --- Orchestration ----------------------------------------------------------
 
-async function scrape(): Promise<ScrapedOffer[]> {
-  const folderId = await currentFolderId();
-  if (process.env.SCRAPE_DEBUG) console.error(`  [hoogvliet] folder: ${folderId}`);
-
+/** Scrape one folder's deals. Bails early if the folder is clearly stale (its
+ *  first parsed deal is already expired), to avoid fetching a whole old leaflet. */
+async function scrapeFolder(folderId: string, now: Date): Promise<ScrapedOffer[]> {
   const articleIds = await collectArticleIds(folderId);
-  if (process.env.SCRAPE_DEBUG) console.error(`  [hoogvliet] ${articleIds.length} deals in folder`);
-  if (articleIds.length === 0) {
-    throw new Error(`No deals found in Hoogvliet folder ${folderId} (structure may have changed).`);
-  }
+  if (process.env.SCRAPE_DEBUG) console.error(`  [hoogvliet] ${folderId}: ${articleIds.length} deals`);
 
   const offers: ScrapedOffer[] = [];
   for (const id of articleIds) {
@@ -225,11 +232,47 @@ async function scrape(): Promise<ScrapedOffer[]> {
     try {
       const html = await httpText(`${ORIGIN}/aanbiedingen/${id}`);
       const offer = parseDeal(html, id);
-      if (offer) offers.push(offer);
-      else if (process.env.SCRAPE_DEBUG) console.error(`  [hoogvliet] ${id}: no parseable deal, skipped`);
+      if (!offer) {
+        if (process.env.SCRAPE_DEBUG) console.error(`  [hoogvliet] ${id}: no parseable deal, skipped`);
+        continue;
+      }
+      offers.push(offer);
+      // Stale-folder guard: if the very first deal is already past its validity,
+      // this is an old folder still linked on /folder — stop, don't fetch the rest.
+      if (offers.length === 1 && offer.validUntil < now) {
+        if (process.env.SCRAPE_DEBUG) console.error(`  [hoogvliet] ${folderId}: stale (expired), skipping rest`);
+        break;
+      }
     } catch (err) {
       if (process.env.SCRAPE_DEBUG) console.error(`  [hoogvliet] ${id}: ${(err as Error).message}`);
     }
+  }
+  return offers;
+}
+
+async function scrape(): Promise<ScrapedOffer[]> {
+  const now = new Date();
+  const folderIds = pickFolderIds(await httpText(`${ORIGIN}/folder`));
+  if (folderIds.length === 0) throw new Error("Could not find any folder id on /folder.");
+  if (process.env.SCRAPE_DEBUG) console.error(`  [hoogvliet] folders: ${folderIds.join(", ")}`);
+
+  // Scrape each folder independently so one bad/unpublished folder (e.g. an
+  // announced-but-404 upcoming week) doesn't sink the run.
+  const all: ScrapedOffer[] = [];
+  for (const folderId of folderIds) {
+    try {
+      all.push(...(await scrapeFolder(folderId, now)));
+    } catch (err) {
+      if (process.env.SCRAPE_DEBUG) console.error(`  [hoogvliet] ${folderId} failed: ${(err as Error).message}`);
+    }
+  }
+
+  // Drop anything already past its validity (a stale folder still linked on
+  // /folder); current + upcoming offers are kept and coexist in the DB.
+  const offers = all.filter((o) => o.validUntil >= now);
+  if (process.env.SCRAPE_DEBUG) console.error(`  [hoogvliet] ${offers.length} offers across ${folderIds.length} folder(s)`);
+  if (offers.length === 0) {
+    throw new Error(`No deals found in Hoogvliet folders [${folderIds.join(", ")}] (structure may have changed).`);
   }
   return offers;
 }

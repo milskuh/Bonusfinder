@@ -65,7 +65,7 @@ export function LanguageToggle() {
     <button
       onClick={() => setLocale(next)}
       aria-label={`Switch to ${next === "en" ? "English" : "Nederlands"}`}
-      className="rounded-md border px-2 py-1 text-xs font-medium uppercase transition-colors hover:bg-accent"
+      className="rounded-md border px-2.5 py-2 text-xs font-medium uppercase transition-colors hover:bg-accent"
     >
       {locale === "nl" ? "EN" : "NL"}
     </button>

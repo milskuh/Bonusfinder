@@ -1,19 +1,9 @@
 // src/app/api/favorites/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireUser } from "@/lib/auth";
 import { favoriteBodySchema } from "@/lib/validation/filters";
+import { timeframeWhere } from "@/lib/queries/timeframe";
 import { db } from "@/lib/db";
-
-/** Koppelt de ingelogde Clerk-gebruiker aan (of maakt) een lokale User-rij. */
-async function requireUser() {
-  const { userId } = await auth();
-  if (!userId) return null;
-  return db.user.upsert({
-    where: { externalId: userId },
-    update: {},
-    create: { externalId: userId },
-  });
-}
 
 export async function GET() {
   const user = await requireUser();
@@ -26,7 +16,10 @@ export async function GET() {
       product: {
         include: {
           offers: {
-            where: { validUntil: { gte: new Date() } },
+            // "current" timeframe (validFrom <= now AND validUntil >= now) so a
+            // favourite's cheapest deal is one you can actually buy now, not a
+            // next-week offer already ingested into the DB.
+            where: timeframeWhere("current", new Date()),
             orderBy: { pricePerUnit: "asc" },
             take: 1,
             include: { supermarket: { select: { slug: true, name: true, logoUrl: true } } },

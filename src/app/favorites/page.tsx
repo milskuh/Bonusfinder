@@ -30,7 +30,7 @@ function FavoriteCard({ fav }: { fav: FavoriteItem }) {
           onClick={() => toggle.mutate({ productId: fav.productId, add: false })}
           aria-label={t("fav.remove")}
           title={t("fav.remove")}
-          className="grid size-8 shrink-0 place-items-center rounded-full border transition-colors hover:bg-accent"
+          className="grid size-9 shrink-0 place-items-center rounded-full border transition-colors hover:bg-accent"
         >
           <Heart className="size-4 fill-red-500 text-red-500" />
         </button>

@@ -4,11 +4,14 @@
 //
 //   * Supermarket  — upserted by slug.
 //   * Product      — matched by (name, brand); created on first sight, else refreshed.
-//   * Offer        — a supermarket's *active* offers are updated in place, never
-//                    wiped by a re-scrape. New offers are inserted; offers that
-//                    dropped out of the ad but are still within their validity
-//                    window are left alone. An offer is only ever deleted once it
-//                    is past its `validUntil`. (Matching lives in offer-plan.ts.)
+//   * Offer        — updated in place, never wiped by a re-scrape, and matched
+//                    per (supermarket, ISO week of validFrom) so scraping one week
+//                    can't disturb another. This lets an early-published next-week
+//                    ad coexist with the current week. New offers are inserted;
+//                    offers that dropped out of the ad but are still within their
+//                    validity window are left alone; an offer is only ever deleted
+//                    once it is past its `validUntil`. (Matching lives in
+//                    offer-plan.ts.)
 //   * PriceHistory — a row is appended on first sighting or a price change, so the
 //                    price chart keeps a trail without piling up identical points
 //                    on every (e.g. daily) run.
@@ -43,10 +46,13 @@ export async function persistOffers(
 ): Promise<PersistResult> {
   const now = new Date();
 
-  // 1. Supermarket row.
+  // 1. Supermarket row. `logoUrl` is curated reference data owned by the seed
+  //    (self-hosted /logos/* brand assets), so we only set it when first creating
+  //    a store — never on update, or a re-scrape would overwrite the local logo
+  //    with the scraper's generic fallback (e.g. a Clearbit URL).
   const market = await db.supermarket.upsert({
     where: { slug: scraper.slug },
-    update: { name: scraper.name, logoUrl: scraper.logoUrl ?? null },
+    update: { name: scraper.name },
     create: { slug: scraper.slug, name: scraper.name, logoUrl: scraper.logoUrl ?? null },
   });
 
@@ -101,7 +107,7 @@ export async function persistOffers(
   //    once an offer is past its validUntil.
   const activeExisting = await db.offer.findMany({
     where: { supermarketId: market.id, validUntil: { gte: now } },
-    select: { id: true, productId: true, salePrice: true },
+    select: { id: true, productId: true, salePrice: true, validFrom: true },
   });
 
   const writes: OfferWrite[] = resolved.map(({ offer, productId }) => {
@@ -130,8 +136,10 @@ export async function persistOffers(
       id: o.id,
       productId: o.productId,
       salePrice: o.salePrice == null ? null : Number(o.salePrice),
+      validFrom: o.validFrom,
     })),
     writes,
+    now,
   );
 
   // 4. Apply everything in one transaction so readers never see a half-updated

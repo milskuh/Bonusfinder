@@ -1,0 +1,172 @@
+/* Presentation layer for <OffersFeed> (offers-feed.tsx): the four floating
+   "panel" cards, the redesigned Aanbiedingen header, a scroll-reveal for the
+   panels + offer cards, and the desktop sticky sidebar. Purely visual — the
+   ambient logo marquee (logo-marquee-background) drifts through the gutters
+   between these panels, so each region reads as a card floating over it. */
+
+/* ── Panel ───────────────────────────────────────────────────────────────────
+   Shared surface for each region: a white (dark-aware) card with a 16px radius,
+   a 0.5px hairline border and a soft two-layer shadow, plus consistent inner
+   padding. Applied to the header, store sidebar, filter bar and results grid. */
+.panel {
+  background: var(--surface-2);
+  border: 0.5px solid var(--border);
+  border-radius: 16px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 10px 26px rgba(0, 0, 0, 0.05);
+  padding: 1.25rem;
+}
+
+/* ── Aanbiedingen header ─────────────────────────────────────────────────────
+   HEADER COLOURS — named constants, kept together so the whole header can be
+   re-skinned by editing this one block. The light "brand-tint" values live here;
+   the :global(.dark) block near the bottom overrides them for the dark panel
+   variant (near-black fill, white title). */
+.header {
+  --header-bg: #f3faf6;
+  --header-border: #d3e9dc;
+  --header-accent: #15914f;
+  --header-title: #14201a;
+  --header-subtitle: #55665d;
+  --header-pill-bg: #e2f4ea;
+  --header-pill-text: #15914f;
+  --header-dot: #15914f;
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  /* Room on the left for the accent bar so the title clears it. */
+  padding-left: 1.75rem;
+  background: var(--header-bg);
+  border-color: var(--header-border);
+}
+
+/* 4px rounded accent bar down the left edge, inset from the panel's rounded
+   corners so it reads as a floating rule rather than a hard border. */
+.header::before {
+  content: "";
+  position: absolute;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  left: 0.75rem;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--header-accent);
+}
+
+/* Let a long subtitle wrap instead of shoving the count pill off the edge. */
+.headerText {
+  min-width: 0;
+}
+
+.headerTitle {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--header-title);
+}
+
+.headerSubtitle {
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--header-subtitle);
+}
+
+/* Live count pill: a small green dot + the real active-offer count. */
+.countPill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--header-pill-bg);
+  color: var(--header-pill-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.countDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--header-dot);
+}
+
+/* Dark panel variant — just re-point the named constants above. */
+:global(.dark) .header {
+  --header-bg: #14201a;
+  --header-border: rgba(255, 255, 255, 0.1);
+  --header-accent: #2fb574;
+  --header-title: #ffffff;
+  --header-subtitle: #9fb3a8;
+  --header-pill-bg: rgba(47, 181, 116, 0.16);
+  --header-pill-text: #6fe0a6;
+  --header-dot: #2fb574;
+}
+
+/* ── Sticky sidebar (nice-to-have) ───────────────────────────────────────────
+   From lg up, pin the store-filter panel so it tracks the scroll while the grid
+   moves beneath it. Behind prefers-reduced-motion: anyone who prefers less
+   movement keeps it in normal flow (it still hugs its content via the inline
+   `self-start`, so it never stretches to the row's full height). */
+@media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+  .sidebar {
+    position: sticky;
+    top: 1.5rem;
+  }
+}
+
+/* ── Scroll reveal (nice-to-have) ────────────────────────────────────────────
+   Each panel + offer card fades and rises 12px as it enters the viewport. The
+   preferred path is a pure-CSS scroll-driven animation (animation-timeline:
+   view()); browsers without it fall back to an IntersectionObserver in
+   offers-feed.tsx that toggles .revealShown. Both live inside
+   prefers-reduced-motion: no-preference, so reduced-motion users simply get the
+   final, static state (no hiding, no movement). */
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Modern browsers: drive the reveal off each element's own view() progress —
+     no JS. animation-timeline is set on its own line so the `animation`
+     shorthand can't reset it back to `auto`. */
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: reveal-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 80%;
+    }
+  }
+
+  /* Fallback: hide up front, then reveal as the observer marks each element.
+     (This app fetches its offers client-side, so a no-JS visitor sees no offers
+     to reveal anyway — nothing is stranded that would otherwise be visible.) */
+  @supports not (animation-timeline: view()) {
+    .reveal {
+      opacity: 0;
+      transform: translateY(12px);
+      transition:
+        opacity 0.6s ease,
+        transform 0.6s ease;
+    }
+    .revealShown {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}

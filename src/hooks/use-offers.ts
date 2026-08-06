@@ -1,7 +1,7 @@
 "use client";
 
 import { useInfiniteQuery } from "@tanstack/react-query";
-import type { OfferSort } from "@/lib/validation/filters";
+import type { OfferSort, Timeframe } from "@/lib/validation/filters";
 
 // Shape of a single offer as serialized by GET /api/offers. Note: Prisma
 // Decimal fields (salePrice, pricePerUnit, ...) arrive as strings over JSON.
@@ -47,6 +47,7 @@ export type OffersResponse = {
 export type OffersQuery = {
   q?: string;
   sort?: OfferSort;
+  timeframe?: Timeframe;
   pageSize?: number;
   supermarkets?: string[];
   categories?: string[];
@@ -58,6 +59,8 @@ function toSearchParams(query: OffersQuery): URLSearchParams {
   const sp = new URLSearchParams();
   if (query.q) sp.set("q", query.q);
   if (query.sort) sp.set("sort", query.sort);
+  // Only send when non-default so 'current' keeps clean URLs + the existing cache key.
+  if (query.timeframe && query.timeframe !== "current") sp.set("timeframe", query.timeframe);
   if (query.pageSize) sp.set("pageSize", String(query.pageSize));
   if (query.supermarkets?.length) sp.set("supermarkets", query.supermarkets.join(","));
   if (query.categories?.length) sp.set("categories", query.categories.join(","));

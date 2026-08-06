@@ -2,6 +2,17 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import type { OfferFilters, OfferSort } from "@/lib/validation/filters";
+import { timeframeWhere } from "./timeframe";
+
+// The active-offer predicate: an offer is active while `now` is on or before its
+// validUntil. Exported so other queries (e.g. the basket optimiser) filter by the
+// exact same rule instead of re-implementing it. NB: the offer *feed* uses
+// timeframeWhere (which also gates validFrom) so it can show this week vs. next
+// week; this looser rule stays for the basket/favourites, whose behaviour is
+// unchanged for now.
+export const activeOfferWhere = (now: Date): Prisma.OfferWhereInput => ({
+  validUntil: { gte: now },
+});
 
 // Every sort ends with a unique `id` tiebreaker. Without it, offset pagination
 // (skip/take) over rows that share a sort value is non-deterministic: many
@@ -27,7 +38,9 @@ export async function getOffers(filters: OfferFilters) {
   const now = new Date();
 
   const where: Prisma.OfferWhereInput = {
-    validUntil: { gte: now }, // standaard: alleen actieve aanbiedingen
+    // Timeframe: 'current' (default, unchanged feed behaviour) of 'upcoming'
+    // (volgende week — nog niet gestarte aanbiedingen). Zie lib/queries/timeframe.
+    ...timeframeWhere(filters.timeframe, now),
     ...(filters.supermarkets && {
       supermarket: { slug: { in: filters.supermarkets } },
     }),
@@ -88,12 +101,13 @@ export async function getOffers(filters: OfferFilters) {
     }),
   ]);
 
-  // Beste deal = laagste pricePerUnit onder ALLE actieve offers van dat product
-  // (dus niet beperkt tot de huidige pagina).
+  // Beste deal = laagste pricePerUnit onder alle offers van dat product BINNEN
+  // hetzelfde tijdvenster (dus niet beperkt tot de huidige pagina, en niet
+  // vergeleken over 'deze week' vs 'volgende week' heen).
   const productIds = [...new Set(offers.map((o) => o.productId))];
   const mins = await db.offer.groupBy({
     by: ["productId"],
-    where: { productId: { in: productIds }, validUntil: { gte: now } },
+    where: { productId: { in: productIds }, ...timeframeWhere(filters.timeframe, now) },
     _min: { pricePerUnit: true },
   });
   const bestByProduct = new Map(mins.map((m) => [m.productId, m._min.pricePerUnit]));

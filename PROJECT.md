@@ -68,8 +68,11 @@ product across supermarkets can be ranked "beste deal".
 - **Category filter** — multi-select chips across 19 fine-grained categories
   (Groente, Fruit, Vlees, Vis, Zuivel, Eieren, Kaas, Pasta & rijst, Frisdrank…).
 - **Sorting** — newest, highest discount, lowest price, price per unit.
-- **"Beste deal"** — the lowest `pricePerUnit` across a product's active offers
-  is flagged.
+- **This week / Next week** — a timeframe toggle on the feed. "This week" shows
+  currently-valid offers (default); "Next week" shows a source's upcoming ad once
+  it's published (empty, with a friendly note, until then — never faked).
+- **"Beste deal"** — the lowest `pricePerUnit` across a product's offers **within
+  the selected timeframe** is flagged.
 - **Favourites** — signed-in users save products; the favourites page shows the
   cheapest current offer per saved product.
 - **NL/EN language toggle** — the entire UI, deal text, dates, and (with a key)
@@ -112,8 +115,11 @@ flowchart LR
 - `scrape()` fetches + parses the source into `ScrapedOffer` objects.
 - `categorize()` and `normalize()` turn raw fields into the canonical shape.
 - `persist()` writes everything in one transaction: it upserts the supermarket,
-  resolves/creates products, **replaces the supermarket's active offers**
-  (a weekly ad is a full snapshot, not a delta), and appends price history.
+  resolves/creates products, updates/inserts offers **scoped per (supermarket,
+  ISO week of `validFrom`)**, and appends price history. Scoping by week means a
+  re-scrape of one week never disturbs another, so an **early-published next-week
+  ad coexists with the current week** instead of overwriting it. Offers are pruned
+  only once past `validUntil`; future-dated offers add no price-history points.
 
 **Web app** (`src/app`, `src/components`, `src/hooks`, `src/lib`):
 
@@ -167,9 +173,12 @@ short delays, realistic user-agent). Parsing lives in pure, testable helpers.
 Hoogvliet's webshop endpoint returns an incomplete subset, so we scrape the
 **digital folder** (the complete leaflet), which is a Publitas publication:
 
-1. `www.hoogvliet.com/folder` → the current folder id (`folder_2026_<week>`).
+1. `www.hoogvliet.com/folder` → the folder ids. Hoogvliet publishes next week's
+   folder a few days before the current one ends, so we take the **two newest**
+   (`folder_2026_<week>` + `folder_2026_<week+1>`) — the current week and, when
+   live, next week — and drop anything already expired.
 2. Each spread's `hotspots_data.json` → the clickable deal links
-   `/aanbiedingen/<articleId>` (~73 deals/week).
+   `/aanbiedingen/<articleId>` (~73 deals/week per folder).
 3. Fetch each `/aanbiedingen/<id>` product page → **cheerio** parses name,
    original + sale price, `offerText`, image, validity ("geldig van … t/m …"),
    and a clean deep link.
@@ -191,6 +200,11 @@ AH is **promotion-centric**: the discount is structured in `discountLabels`
 "25% korting" or "1+1 gratis" have no absolute price — hence nullable
 `salePrice`. Category comes from the product name, falling back to AH's own
 section label when the name has no keyword.
+
+AH exposes only the **current** period and gates the next behind a
+`nextPeriodVisibleFrom` date (a Friday). Until then next week is unreachable, so
+the "Next week" tab is simply empty for AH until ~Friday; from then
+`fetchUpcomingOffers()` pulls it via the section `date=` param.
 
 ---
 
@@ -222,9 +236,11 @@ products fall back to `HOUDBAAR`.
 - **`components/offers/favorite-button.tsx`** — heart toggle (opens Clerk sign-in
   when signed out).
 - **`app/favorites/page.tsx`** — saved products with their cheapest active offer.
-- **`lib/queries/offers.ts`** — the Prisma query: active-offer filter, optional
-  supermarket/category/price/discount filters, sort (with `nulls: "last"`),
-  pagination, and the "beste deal" (min `pricePerUnit`) computation.
+- **`lib/queries/offers.ts`** — the Prisma query: timeframe filter
+  (`timeframeWhere` from `lib/queries/timeframe.ts` — `current` = started & not
+  ended, `upcoming` = not yet started), optional supermarket/category/price/
+  discount filters, sort (with `nulls: "last"`), pagination, and the "beste deal"
+  (min `pricePerUnit`, scoped to the timeframe) computation.
 - **`lib/validation/filters.ts`** — Zod schema shared by the route handlers and
   hooks, so query params are end-to-end type-safe.
 - **`hooks/use-offers.ts`, `hooks/use-favorites.ts`** — React Query wrappers.
@@ -343,6 +359,14 @@ npm run dev                    # http://localhost:3000
   app API; both can change if the sites change.
 - **Weekly rollover** — offer counts dip briefly while a supermarket switches its
   ad over to the new week.
+- **"Next week" coverage varies by source** — Hoogvliet publishes next week's
+  folder a few days early, so it appears first; AH only from its Friday
+  `nextPeriodVisibleFrom`; the other scrapers surface next week whenever their own
+  source exposes it (empty until then — never faked). The scrape must run for the
+  data to land, so "Next week" is empty until the first scrape that catches it.
+- **Favourites & basket stay on current offers** — only the feed has the timeframe
+  toggle; the favourites/basket pages still use the looser active-offer rule (a
+  possible follow-up: give them the same `current` predicate / a timeframe view).
 - **Manual ingestion** — `db:scrape` / `db:translate` run on demand. A scheduler
   (cron / GitHub Actions / Vercel Cron) would keep data fresh automatically; not
   set up yet.

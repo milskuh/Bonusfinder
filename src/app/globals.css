@@ -26,6 +26,10 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
+  /* Elevated panel surface — the white cards that float over the ambient logo
+     backdrop (see offers-feed.module.css .panel). A dedicated token so the two
+     surface levels (page vs. panel) can diverge later without touching --card. */
+  --surface-2: oklch(1 0 0);
 }
 
 .dark {
@@ -47,6 +51,7 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+  --surface-2: oklch(0.205 0 0);
 }
 
 @theme inline {

@@ -8,8 +8,10 @@ import { useFavoriteIds, useToggleFavorite } from "@/hooks/use-favorites";
 
 // Floating white circle that sits over the product image. `hover:text-red-500`
 // tints an unfilled heart red on hover (it inherits currentColor).
+// The button floats over the card's product-image tile, which stays light even
+// in dark mode, so the white circle is intentional in both themes.
 const base =
-  "grid size-9 place-items-center rounded-full border border-neutral-200 bg-white text-neutral-400 shadow-sm transition hover:scale-105 hover:text-red-500";
+  "grid size-10 place-items-center rounded-full border border-neutral-200 bg-white text-neutral-400 shadow-sm transition hover:scale-105 hover:text-red-500";
 
 export function FavoriteButton({
   productId,

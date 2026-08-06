@@ -15,6 +15,11 @@
 // euro price, but a percentage or 1+1 deal has none — hence salePrice is
 // optional. Discount data comes structured in `discountLabels`.
 //
+// NEXT week: AH exposes only the current period, and gates the next one behind a
+// `nextPeriodVisibleFrom` date (a Friday). Until then next week is unreachable
+// (the `date=` param returns nothing), so the "next week" feed is simply empty
+// for AH until ~Friday, then fetchUpcomingOffers() picks it up. No placeholders.
+//
 // robots.txt: api.ah.nl is the app API (not the Disallowed www.ah.nl/data paths)
 // and /bonus itself is crawlable. We stay gentle: sequential, a short delay and
 // a realistic app user-agent.
@@ -80,8 +85,15 @@ interface BonusSection {
   bonusGroupOrProducts?: { bonusGroup?: BonusGroup }[];
 }
 interface UrlMeta { url: string; bonusType?: string }
+interface Period {
+  bonusStartDate?: string;
+  bonusEndDate?: string;
+  /** Date (a Friday) from which AH exposes the NEXT period. Empty until then. */
+  nextPeriodVisibleFrom?: string;
+  tabs?: { description?: string; urlMetadataList?: UrlMeta[] }[];
+}
 interface Metadata {
-  periods?: { tabs?: { description?: string; urlMetadataList?: UrlMeta[] }[] }[];
+  periods?: Period[];
 }
 
 // --- Pure mapping (exported for testing) -----------------------------------
@@ -181,20 +193,21 @@ export function parseBonusGroup(g: BonusGroup, today = new Date()): ScrapedOffer
 /** Section types that are Albert Heijn's own supermarket offers (not Gall/Etos). */
 const KEEP_BONUS_TYPES = new Set(["NATIONAL", "AHONLINE"]);
 
-async function scrape(): Promise<ScrapedOffer[]> {
-  const token = await anonymousToken();
-  const meta = await apiJson<Metadata>("bonuspage/v3/metadata", token);
-
-  // The "Alle Bonus" tab lists every section; keep AH's own, drop Gall/Etos and
-  // the SPOTLIGHT tab (which just repeats national deals).
+/** The "Alle Bonus" tab's sections that are AH's own (drop Gall/Etos + SPOTLIGHT). */
+function nationalSections(meta: Metadata): UrlMeta[] {
   const tab =
     meta.periods?.[0]?.tabs?.find((t) => /alle bonus/i.test(t.description ?? "")) ??
     meta.periods?.[0]?.tabs?.[0];
-  const sections = (tab?.urlMetadataList ?? []).filter(
+  return (tab?.urlMetadataList ?? []).filter(
     (s) => s.bonusType && KEEP_BONUS_TYPES.has(s.bonusType),
   );
-  if (process.env.SCRAPE_DEBUG) console.error(`  [ah] ${sections.length} bonus sections`);
+}
 
+/** Fetch + parse every bonusGroup across the given sections, deduped by offer key. */
+async function fetchSectionOffers(
+  sections: UrlMeta[],
+  token: string,
+): Promise<Map<string, ScrapedOffer>> {
   const byKey = new Map<string, ScrapedOffer>();
   let first = true;
   for (const section of sections) {
@@ -214,9 +227,71 @@ async function scrape(): Promise<ScrapedOffer[]> {
       if (process.env.SCRAPE_DEBUG) console.error(`  [ah] section ${section.url}: ${(err as Error).message}`);
     }
   }
+  return byKey;
+}
 
-  const offers = [...byKey.values()];
-  if (process.env.SCRAPE_DEBUG) console.error(`  [ah] ${offers.length} bonus deals`);
+/** Format a Date as a local YYYY-MM-DD (the shape AH's `date=` param expects). */
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Swap (or append) the `date=` query param on a section URL. */
+function withDate(url: string, date: string): string {
+  return /date=\d{4}-\d{2}-\d{2}/.test(url)
+    ? url.replace(/date=\d{4}-\d{2}-\d{2}/, `date=${date}`)
+    : `${url}${url.includes("?") ? "&" : "?"}date=${date}`;
+}
+
+/**
+ * Best-effort fetch of NEXT week's bonus, when AH exposes it. AH shows only one
+ * period at a time and gates the next behind `nextPeriodVisibleFrom` (a Friday);
+ * before then the `date=` param returns nothing, so we don't even try. Once it's
+ * visible we re-read metadata for a next-week date and pull its sections, forcing
+ * `date=` onto each section URL. Everything is filtered to genuinely future-dated
+ * offers (validFrom after the current period ends), so nothing here can duplicate
+ * or misdate the current week. Empty until rollover is expected — never faked.
+ */
+async function fetchUpcomingOffers(
+  meta: Metadata,
+  token: string,
+  now: Date,
+  current: Map<string, ScrapedOffer>,
+): Promise<ScrapedOffer[]> {
+  const period = meta.periods?.[0];
+  const visibleFrom = asDate(period?.nextPeriodVisibleFrom);
+  const currentEnd = asDate(period?.bonusEndDate, true);
+  if (!visibleFrom || !currentEnd || now < visibleFrom) return [];
+
+  const nextDate = ymd(new Date(currentEnd.getTime() + 12 * 3600_000)); // day after current end
+  try {
+    await sleep(REQUEST_DELAY_MS);
+    const nextMeta = await apiJson<Metadata>(`bonuspage/v3/metadata?date=${nextDate}`, token);
+    const sections = nationalSections(nextMeta).map((s) => ({ ...s, url: withDate(s.url, nextDate) }));
+    await sleep(REQUEST_DELAY_MS);
+    const fetched = await fetchSectionOffers(sections, token);
+    const upcoming: ScrapedOffer[] = [];
+    for (const [key, offer] of fetched) {
+      if (offer.validFrom > currentEnd && !current.has(key)) upcoming.push(offer);
+    }
+    return upcoming;
+  } catch (err) {
+    if (process.env.SCRAPE_DEBUG) console.error(`  [ah] upcoming fetch failed: ${(err as Error).message}`);
+    return [];
+  }
+}
+
+async function scrape(): Promise<ScrapedOffer[]> {
+  const now = new Date();
+  const token = await anonymousToken();
+  const meta = await apiJson<Metadata>("bonuspage/v3/metadata", token);
+
+  const current = await fetchSectionOffers(nationalSections(meta), token);
+  if (process.env.SCRAPE_DEBUG) console.error(`  [ah] ${current.size} current bonus deals`);
+
+  const upcoming = await fetchUpcomingOffers(meta, token, now, current);
+  if (process.env.SCRAPE_DEBUG) console.error(`  [ah] ${upcoming.length} upcoming bonus deals`);
+
+  const offers = [...current.values(), ...upcoming];
   if (offers.length === 0) throw new Error("No Albert Heijn bonus deals found (API may have changed).");
   return offers;
 }
