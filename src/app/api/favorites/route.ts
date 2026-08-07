@@ -37,10 +37,9 @@ export async function POST(req: NextRequest) {
 
   const parsed = favoriteBodySchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Ongeldige invoer", issues: parsed.error.issues },
-      { status: 400 },
-    );
+    // Log validation detail server-side; return a generic 400 to the client.
+    console.warn("[api/favorites] invalid input", parsed.error.issues);
+    return NextResponse.json({ error: "Ongeldige invoer" }, { status: 400 });
   }
 
   const favorite = await db.favorite.upsert({
@@ -57,10 +56,9 @@ export async function DELETE(req: NextRequest) {
 
   const parsed = favoriteBodySchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Ongeldige invoer", issues: parsed.error.issues },
-      { status: 400 },
-    );
+    // Log validation detail server-side; return a generic 400 to the client.
+    console.warn("[api/favorites] invalid input", parsed.error.issues);
+    return NextResponse.json({ error: "Ongeldige invoer" }, { status: 400 });
   }
 
   await db.favorite.deleteMany({

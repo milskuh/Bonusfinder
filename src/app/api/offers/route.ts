@@ -15,10 +15,10 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     if (err instanceof ZodError) {
-      return NextResponse.json(
-        { error: "Ongeldige filters", issues: err.issues },
-        { status: 400 },
-      );
+      // Log the validation detail server-side; don't echo internal field names
+      // and schema structure back to the client.
+      console.warn("[GET /api/offers] invalid filters", err.issues);
+      return NextResponse.json({ error: "Ongeldige filters" }, { status: 400 });
     }
     console.error("[GET /api/offers]", err);
     return NextResponse.json({ error: "Interne fout" }, { status: 500 });

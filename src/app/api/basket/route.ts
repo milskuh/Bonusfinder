@@ -12,8 +12,12 @@ import {
 import { db } from "@/lib/db";
 
 const unauthorized = () => NextResponse.json({ error: "Niet ingelogd" }, { status: 401 });
-const badRequest = (issues: unknown) =>
-  NextResponse.json({ error: "Ongeldige invoer", issues }, { status: 400 });
+// Log the Zod detail server-side; the client just gets a generic 400 so we don't
+// leak internal field names / schema structure.
+const badRequest = (issues: unknown) => {
+  console.warn("[api/basket] invalid input", issues);
+  return NextResponse.json({ error: "Ongeldige invoer" }, { status: 400 });
+};
 
 const productSelect = {
   select: { id: true, name: true, nameEn: true, brand: true, imageUrl: true },

@@ -18,10 +18,9 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     if (err instanceof ZodError) {
-      return NextResponse.json(
-        { error: "Ongeldige zoekopdracht", issues: err.issues },
-        { status: 400 },
-      );
+      // Log validation detail server-side; keep it out of the client response.
+      console.warn("[GET /api/products/search] invalid query", err.issues);
+      return NextResponse.json({ error: "Ongeldige zoekopdracht" }, { status: 400 });
     }
     console.error("[GET /api/products/search]", err);
     return NextResponse.json({ error: "Interne fout" }, { status: 500 });

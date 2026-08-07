@@ -16,11 +16,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // Product/supermarket images come from external hosts. Loosen this to the
-  // specific CDNs you scrape once they're known; the wildcard keeps dev simple.
-  images: {
-    remotePatterns: [{ protocol: "https", hostname: "**" }],
-  },
+  // No `images.remotePatterns` on purpose: every next/image use renders a local
+  // /brand/*.svg asset (unoptimized), and product/logo images use plain <img>
+  // with an onError fallback — so nothing goes through the image optimizer. A
+  // wildcard here would turn /_next/image into an open proxy for any host. If a
+  // remote next/image is ever added, allowlist only that specific host below.
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
