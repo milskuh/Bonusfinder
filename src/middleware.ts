@@ -1,6 +1,6 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { checkRateLimit, clientIp } from "@/lib/rate-limit";
 
 // Attaches Clerk auth context to every request so `auth()` works in route
 // handlers, and applies a best-effort rate limit to the API (finding F5). No
@@ -23,10 +23,13 @@ export default clerkMiddleware(async (auth, req) => {
     // rather than each id getting its own allowance.
     const routeKey = pathname.split("/").slice(0, 3).join("/"); // "/api/offers", ...
 
-    // Generous windows: mutations are cheaper to abuse and per-user, reads are
-    // per-IP and can legitimately burst (infinite-feed pagination).
-    const limit = isMutation ? 60 : 200;
-    const result = rateLimit(`${routeKey}:${req.method}:${identity}`, limit, 60_000);
+    // Reads can legitimately burst (infinite-feed pagination); mutations are
+    // per-user and cheaper to abuse. checkRateLimit prefers the global Upstash
+    // limiter and falls back to the in-memory one when Redis isn't configured.
+    const result = await checkRateLimit(
+      `${routeKey}:${req.method}:${identity}`,
+      isMutation ? "mutation" : "read",
+    );
 
     if (!result.ok) {
       const retryAfter = Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000));

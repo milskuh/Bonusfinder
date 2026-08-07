@@ -1,8 +1,36 @@
 // src/lib/queries/offers.ts
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { cached } from "@/lib/cache";
 import type { OfferFilters, OfferSort } from "@/lib/validation/filters";
 import { timeframeWhere } from "./timeframe";
+
+// How long a computed feed page stays served from the in-process cache. Offers
+// only change on an ingest run, so this is comfortably within the CDN's
+// s-maxage=300 on /api/offers; it mainly coalesces concurrent identical requests
+// and keeps hot filter combos off the single pooled DB connection.
+const OFFERS_TTL_MS = 120_000;
+
+// Stable cache key: sort array-valued filters so equivalent requests in any order
+// hit the same entry.
+function offersCacheKey(f: OfferFilters): string {
+  const sortArr = (a?: string[]) => (a ? [...a].sort() : undefined);
+  return JSON.stringify({
+    q: f.q,
+    supermarkets: sortArr(f.supermarkets),
+    categories: sortArr(f.categories),
+    subcategories: sortArr(f.subcategories),
+    brands: sortArr(f.brands),
+    priceMin: f.priceMin,
+    priceMax: f.priceMax,
+    discountMin: f.discountMin,
+    expiringToday: f.expiringToday,
+    timeframe: f.timeframe,
+    sort: f.sort,
+    page: f.page,
+    pageSize: f.pageSize,
+  });
+}
 
 // The active-offer predicate: an offer is active while `now` is on or before its
 // validUntil. Exported so other queries (e.g. the basket optimiser) filter by the
@@ -35,6 +63,12 @@ function endOfToday(): Date {
 }
 
 export async function getOffers(filters: OfferFilters) {
+  // Coalesce concurrent identical requests into one DB round-trip and serve hot
+  // combos from memory for OFFERS_TTL_MS. See lib/cache.ts for the rationale.
+  return cached(offersCacheKey(filters), OFFERS_TTL_MS, () => getOffersFromDb(filters));
+}
+
+async function getOffersFromDb(filters: OfferFilters) {
   const now = new Date();
 
   const where: Prisma.OfferWhereInput = {

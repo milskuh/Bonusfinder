@@ -32,6 +32,8 @@
     "@clerk/ui": "^1.26.1",
     "@prisma/client": "^6.5.0",
     "@tanstack/react-query": "^5.66.0",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.2",
     "cheerio": "^1.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

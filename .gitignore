@@ -37,3 +37,7 @@ yarn-error.log*
 # local-only working notes / security review output (keep out of git)
 SECURITY_FINDINGS.md
 BASKET_TODO.md
+
+# load test scripts + findings (local-only, never ship)
+/loadtest/
+STRESS_FINDINGS.md

@@ -30,7 +30,10 @@ export const offerFiltersSchema = z.object({
   expiringToday: z.boolean().optional(),
   timeframe: timeframeSchema,
   sort: offerSortSchema,
-  page: z.coerce.number().int().positive().default(1),
+  // `page` is capped (not just positive) so a crafted deep offset can't force a
+  // slow full-table scan as the catalogue grows — 10 000 × max pageSize 60 is far
+  // beyond any real page count. Over the cap → 400, same as an out-of-range pageSize.
+  page: z.coerce.number().int().positive().max(10_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(60).default(24),
 });
 export type OfferFilters = z.infer<typeof offerFiltersSchema>;
@@ -60,7 +63,7 @@ export function parseOfferFilters(sp: URLSearchParams): OfferFilters {
 
 export const searchSchema = z.object({
   q: z.string().min(2).max(100),
-  page: z.coerce.number().int().positive().default(1),
+  page: z.coerce.number().int().positive().max(10_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(60).default(24),
 });
 export type SearchParams = z.infer<typeof searchSchema>;
