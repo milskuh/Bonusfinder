@@ -6,10 +6,15 @@ import { shadcn } from "@clerk/ui/themes";
 import { Providers } from "./providers";
 import { HeaderNav } from "@/components/header-nav";
 import { LogoMarqueeBackground } from "@/components/logo-marquee-background";
-import { APP_NAME, APP_DESCRIPTION } from "@/lib/config";
+import { APP_NAME, APP_DESCRIPTION, SITE_URL } from "@/lib/config";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  // Absolute base for every relative URL Next emits (canonical, Open Graph,
+  // Twitter) — without it those resolve to localhost and Google can't index a
+  // canonical host.
+  metadataBase: new URL(SITE_URL),
+  alternates: { canonical: "/" },
   title: {
     default: APP_NAME,
     template: `%s · ${APP_NAME}`,
