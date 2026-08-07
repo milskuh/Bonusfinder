@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { cached } from "@/lib/cache";
 import type { OfferFilters, OfferSort } from "@/lib/validation/filters";
 import { timeframeWhere } from "./timeframe";
+import { toPrefixTsQuery, likeEscape } from "./search";
 
 // How long a computed feed page stays served from the in-process cache. Offers
 // only change on an ingest run, so this is comfortably within the CDN's
@@ -100,11 +101,30 @@ async function getOffersFromDb(filters: OfferFilters) {
   // geparametriseerde raw query en voegen ze toe als extra filter. Zo COMBINEERT
   // `q` met de bestaande categorie-/prijs-/kortingfilters, sortering en paginatie
   // (geen vervanging). Geen match => lege set => lege feed.
+  //
+  // We gebruiken een prefix-tsquery (to_tsquery('dutch', 'chocola:*')) i.p.v.
+  // websearch_/plainto_ zodat deelwoorden ("chocola" → "Chocolade") matchen. Als
+  // extra vangnet OR-en we een ILIKE substring-match op name/nameEn/brand: dat
+  // dekt EN-modus (searchVector bevat alleen de NL naam/brand) en mid-woord hits.
   if (filters.q) {
-    const matches = await db.$queryRaw<Array<{ id: string }>>`
-      SELECT id FROM "Product"
-      WHERE "searchVector" @@ websearch_to_tsquery('dutch', ${filters.q})
-    `;
+    const tsq = toPrefixTsQuery(filters.q);
+    const like = `%${likeEscape(filters.q)}%`;
+    const predicate = tsq
+      ? Prisma.sql`(
+          "searchVector" @@ to_tsquery('dutch', ${tsq})
+          OR "name" ILIKE ${like}
+          OR "nameEn" ILIKE ${like}
+          OR "brand" ILIKE ${like}
+        )`
+      : // Input viel volledig weg tot niets (alleen leestekens): alleen ILIKE.
+        Prisma.sql`(
+          "name" ILIKE ${like}
+          OR "nameEn" ILIKE ${like}
+          OR "brand" ILIKE ${like}
+        )`;
+    const matches = await db.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`SELECT id FROM "Product" WHERE ${predicate}`,
+    );
     where.productId = { in: matches.map((m) => m.id) };
   }
 
