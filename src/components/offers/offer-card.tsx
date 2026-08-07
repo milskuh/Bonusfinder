@@ -11,6 +11,22 @@ import type { OfferListItem } from "@/hooks/use-offers";
 
 const euro = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" });
 
+/**
+ * Product deep-links come from third-party scraped data. Only render http(s)
+ * links as an href; anything else (e.g. a `javascript:`/`data:` URL) is dropped
+ * so a poisoned source can't turn a stored URL into an XSS sink. Defence-in-depth
+ * alongside the ingest-time check in scrapers/persist.ts.
+ */
+function safeHref(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "https:" || protocol === "http:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Split a price into whole + ",cc" cents for the raised-cents shelf label. */
 function splitEuro(value: number): { whole: string; cents: string } {
   const [whole, cents] = value.toFixed(2).split(".");
@@ -170,9 +186,9 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
           </span>
         )}
 
-        {offer.product.url ? (
+        {safeHref(offer.product.url) ? (
           <a
-            href={offer.product.url}
+            href={safeHref(offer.product.url)!}
             target="_blank"
             rel="noopener noreferrer"
             className="line-clamp-2 min-h-10 text-sm leading-snug font-medium text-card-foreground hover:underline"

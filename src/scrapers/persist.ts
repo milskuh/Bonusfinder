@@ -27,6 +27,20 @@ import type { ScrapedOffer, Scraper } from "./types";
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
+// Only persist http(s) links. Deep-links and image URLs are third-party data
+// scraped from supermarket sites; a `javascript:`/`data:` URL stored here would
+// become a stored-XSS `href`/`src` in the UI (see offer-card.tsx). Anything that
+// isn't a parseable http(s) URL collapses to null.
+const safeHttpUrl = (u: string | null | undefined): string | null => {
+  if (!u) return null;
+  try {
+    const { protocol } = new URL(u);
+    return protocol === "https:" || protocol === "http:" ? u : null;
+  } catch {
+    return null;
+  }
+};
+
 export interface PersistResult {
   supermarket: string;
   /** New products created this run. */
@@ -94,8 +108,8 @@ export async function persistOffers(
           brand: offer.brand,
           category: offer.category,
           subcategory: offer.subcategory,
-          imageUrl: offer.imageUrl,
-          url: offer.deepLink ?? null,
+          imageUrl: safeHttpUrl(offer.imageUrl),
+          url: safeHttpUrl(offer.deepLink),
           contentAmount: offer.contentAmount ?? null,
           contentUnit: offer.contentUnit ?? null,
         },
@@ -110,8 +124,10 @@ export async function persistOffers(
         data: {
           category: offer.category,
           subcategory: offer.subcategory,
-          imageUrl: offer.imageUrl ?? undefined,
-          url: offer.deepLink ?? undefined,
+          // Validate when a value is supplied; leave the stored value untouched
+          // when the source omitted it (undefined = "no change" in Prisma).
+          imageUrl: offer.imageUrl ? safeHttpUrl(offer.imageUrl) : undefined,
+          url: offer.deepLink ? safeHttpUrl(offer.deepLink) : undefined,
           contentAmount: offer.contentAmount ?? undefined,
           contentUnit: offer.contentUnit ?? undefined,
         },

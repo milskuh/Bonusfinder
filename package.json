@@ -21,6 +21,11 @@
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
+  "//overrides": "Pin the two transitive packages flagged High by npm audit to their patched versions. Next 15 ships older ranges and npm's only auto-fix is the Next 16 major; these overrides close the advisories without that upgrade. Revisit/remove when moving to Next 16.",
+  "overrides": {
+    "postcss": "^8.5.23",
+    "sharp": "^0.35.0"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
     "@clerk/nextjs": "^6.12.0",
@@ -31,7 +36,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.475.0",
-    "next": "^15.2.0",
+    "next": "^15.5.23",
     "prisma": "^6.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
