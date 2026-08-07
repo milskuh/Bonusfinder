@@ -33,3 +33,6 @@ yarn-error.log*
 
 # prisma
 /prisma/migrations/dev.db*
+
+# local-only security review output (may describe vulnerabilities — keep out of git)
+SECURITY_FINDINGS.md
