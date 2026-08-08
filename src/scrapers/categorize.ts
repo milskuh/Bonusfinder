@@ -90,9 +90,14 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
   {
     category: Category.KOFFIE,
     keywords: [
-      "koffie", "oploskoffie", "filterkoffie",
+      "koffie", "oploskoffie", "filterkoffie", "snelfilter",
       "espresso", "cappuccino", "lungo", "ristretto", "macchiato", "latte",
       "senseo", "nespresso", "nescafe", "nescafé", "dolce gusto",
+      // Coffee-only brands, so a bare brand name (no "koffie" word) is still caught
+      // by NAME rather than relying on a section hint (see recategorize.ts). Kept
+      // to brands that sell nothing but coffee — no ambiguous tokens like "l'or"
+      // (would hit "l'oréal") or "australian" (wine/beef).
+      "segafredo", "barissimo", "kanis", "douwe egberts",
     ],
   },
   // --- Other (non-alcoholic) drinks: juice, water, tea. (Coffee is handled by

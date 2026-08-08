@@ -27,6 +27,19 @@ test("coffee products land in KOFFIE", () => {
   assert.equal(categorize("Oploskoffie"), Category.KOFFIE); // explicit compound token
   assert.equal(categorize("Nespresso capsules"), Category.KOFFIE);
   assert.equal(categorize("Douwe Egberts filterkoffie"), Category.KOFFIE);
+  // Coffee-only brand names with no "koffie" word are caught by NAME, so we don't
+  // have to lean on section hints (the source of the section-label pollution bug).
+  assert.equal(categorize("Alle Segafredo"), Category.KOFFIE);
+  assert.equal(categorize("Kanis & Gunnink"), Category.KOFFIE);
+  assert.equal(categorize("Perla snelfiltermaling"), Category.KOFFIE);
+});
+
+test("a broad drinks section keyword in the NAME still classifies on the product itself", () => {
+  // Guards the fix for the backfill bug: real classification runs on the product
+  // name. A beer named plainly does NOT become KOFFIE just because it shares an
+  // aisle with coffee — its heading is never fed to categorize().
+  assert.notEqual(categorize("Affligem Blond"), Category.KOFFIE);
+  assert.notEqual(categorize("Pickwick thee"), Category.KOFFIE); // tea → DRANKEN, not KOFFIE
 });
 
 test("a normal soft drink is unaffected by KOFFIE", () => {

@@ -41,11 +41,15 @@ async function main() {
   });
   console.log(`Loaded ${products.length} products.${dry ? " (dry run — no writes)" : ""}`);
 
-  // Recompute with the same inputs the scrapers feed the classifier: the product
-  // name plus its subcategory/brand hints. Only keep a move when it lands in a new
-  // category (see the header note) and actually changes the row.
+  // Classify from the product NAME ONLY — deliberately NOT from `subcategory`.
+  // The stored subcategory is often a broad department heading ("Dranken, sap,
+  // koffie & thee", "Koffie, thee") that contains several category keywords; feed
+  // it to categorize() and the word "koffie" inside the heading drags beers, wines
+  // and teas into KOFFIE. The scrapers avoid this on purpose (they never pass the
+  // heading to categorize — see mapDirkSectionCategory / mapSectionCategory), so we
+  // match that here. Only keep a move that lands in a new category and changes the row.
   const moves = products
-    .map((p) => ({ p, next: categorize(p.name, [p.subcategory, p.brand]) }))
+    .map((p) => ({ p, next: categorize(p.name) }))
     .filter(({ p, next }) => next !== p.category && NEW_CATEGORIES.has(next));
 
   // Per-transition tally, e.g. "VLEES → VEGETARISCH: 12".
