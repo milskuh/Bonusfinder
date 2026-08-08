@@ -29,16 +29,18 @@ const TIMEFRAMES: { value: Timeframe; labelKey: TKey }[] = [
 const PAGE_SIZE = 24;
 
 function OfferSkeleton() {
+  // Mirrors the compact <OfferCard> geometry (padding + type scale) so the grid
+  // doesn't jump when real cards replace the skeletons on first paint.
   return (
     <div className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-border">
-      <Skeleton className="aspect-square w-full rounded-none" />
-      <div className="flex flex-col gap-2 p-4">
-        <Skeleton className="h-3.5 w-full" />
-        <Skeleton className="h-3.5 w-2/3" />
-        <Skeleton className="mt-2 h-8 w-24" />
-        <div className="mt-2 flex items-center justify-between border-t border-border pt-2.5">
-          <Skeleton className="h-3 w-16" />
-          <Skeleton className="h-3 w-14" />
+      <Skeleton className="aspect-[4/3] w-full rounded-none sm:aspect-square" />
+      <div className="flex flex-col gap-2 p-2 sm:p-3">
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-2/3" />
+        <Skeleton className="mt-1 h-6 w-20 sm:h-7 sm:w-24" />
+        <div className="mt-1.5 flex items-center justify-between border-t border-border pt-2 sm:mt-2">
+          <Skeleton className="h-2.5 w-12" />
+          <Skeleton className="h-2.5 w-12" />
         </div>
       </div>
     </div>
@@ -51,6 +53,10 @@ export function OffersFeed() {
   const [timeframe, setTimeframe] = useState<Timeframe>("current");
   const [categories, setCategories] = useState<string[]>([]);
   const [supermarkets, setSupermarkets] = useState<string[]>([]);
+  // Mobile-only: the store chips live behind a collapsible "Winkels" disclosure
+  // so they don't add a permanent panel above the fold. Always expanded at lg
+  // (the desktop sidebar), where this flag is ignored.
+  const [storesOpen, setStoresOpen] = useState(false);
   // The stores to offer as chips: only those with active offers (empty until
   // loaded). Failure/empty simply renders no store row — the feed still works.
   const { data: stores = [] } = useSupermarkets();
@@ -257,9 +263,62 @@ export function OffersFeed() {
 
   const clearSearch = () => setRawQuery("");
 
+  // The store filter chips, rendered identically in the desktop sidebar and the
+  // mobile disclosure below — only their flex container differs (vertical list
+  // vs. horizontal scroll row). Duplicate keys across the two lists are fine:
+  // each set has its own parent and only one is visible per breakpoint.
+  const storeChips = (
+    <>
+      <button
+        onClick={() => setSupermarkets([])}
+        aria-pressed={supermarkets.length === 0}
+        className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium whitespace-nowrap transition ${
+          supermarkets.length === 0
+            ? "border-foreground bg-foreground text-background"
+            : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+        }`}
+      >
+        {t("filter.all")}
+      </button>
+      {stores.map((store) => {
+        const active = supermarkets.includes(store.slug);
+        const brand = supermarketBrand(store.slug);
+        return (
+          <button
+            key={store.slug}
+            onClick={() => toggleSupermarket(store.slug)}
+            aria-pressed={active}
+            aria-label={store.name}
+            style={
+              active
+                ? {
+                    backgroundColor: brand.color,
+                    borderColor: brand.color,
+                    color: brand.foreground,
+                  }
+                : undefined
+            }
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full border py-1.5 pr-3.5 pl-1 text-sm font-medium whitespace-nowrap transition ${
+              active
+                ? "shadow-sm"
+                : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+            }`}
+          >
+            {/* Logo is decorative here — the visible name is the chip's
+                accessible label, so hide it from AT to avoid double-speak. */}
+            <span aria-hidden="true" className="inline-flex">
+              <SupermarketLogo supermarket={store} />
+            </span>
+            <span>{store.name}</span>
+          </button>
+        );
+      })}
+    </>
+  );
+
   return (
-    <section ref={sectionRef} className="mx-auto max-w-6xl px-6 py-8">
-      <header className={`${styles.panel} ${styles.header} ${styles.reveal} mb-6`}>
+    <section ref={sectionRef} className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-8">
+      <header className={`${styles.panel} ${styles.header} ${styles.reveal} mb-4 sm:mb-6`}>
         <div className={styles.headerText}>
           <h1 className={styles.headerTitle}>{t("offers.title")}</h1>
           <p className={styles.headerSubtitle}>{t("offers.subtitle")}</p>
@@ -274,7 +333,7 @@ export function OffersFeed() {
         )}
       </header>
 
-      <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
+      <div className="flex flex-col gap-3 sm:gap-6 lg:flex-row lg:gap-8">
         {/* Store filter as a left sidebar panel (multi-select; none selected =
             all). Only stores with active offers appear; each chip carries its
             brand logo + colour, so a newly added store is styled automatically.
@@ -284,61 +343,21 @@ export function OffersFeed() {
             pinned via styles.sidebar — but only behind prefers-reduced-motion, so
             reduced-motion users keep it in normal flow. Deliberately NOT sticky
             on mobile, where it stacks above the (also-sticky) filter bar. */}
+        {/* Store filter as a left sidebar panel — desktop only (lg+). On mobile
+            the same chips live in a collapsible disclosure inside the sticky
+            filter bar below, so they don't push the grid down the screen. */}
         {stores.length > 0 && (
           <aside
-            className={`${styles.panel} ${styles.sidebar} ${styles.reveal} lg:w-56 lg:shrink-0 lg:self-start`}
+            className={`${styles.panel} ${styles.sidebar} ${styles.reveal} hidden lg:block lg:w-56 lg:shrink-0 lg:self-start`}
           >
             {/* No visible heading — the brand chips make it self-evidently the
                 store filter. The accessible name lives on the group instead. */}
             <div
               role="group"
               aria-label={t("filter.stores")}
-              className="flex flex-wrap gap-2 lg:flex-col lg:flex-nowrap lg:items-start"
+              className="flex flex-col items-start gap-2"
             >
-              <button
-                onClick={() => setSupermarkets([])}
-                aria-pressed={supermarkets.length === 0}
-                className={`rounded-full border px-3.5 py-2 text-sm font-medium transition ${
-                  supermarkets.length === 0
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
-                }`}
-              >
-                {t("filter.all")}
-              </button>
-              {stores.map((store) => {
-                const active = supermarkets.includes(store.slug);
-                const brand = supermarketBrand(store.slug);
-                return (
-                  <button
-                    key={store.slug}
-                    onClick={() => toggleSupermarket(store.slug)}
-                    aria-pressed={active}
-                    aria-label={store.name}
-                    style={
-                      active
-                        ? {
-                            backgroundColor: brand.color,
-                            borderColor: brand.color,
-                            color: brand.foreground,
-                          }
-                        : undefined
-                    }
-                    className={`inline-flex items-center gap-2 rounded-full border py-1.5 pr-3.5 pl-1 text-sm font-medium transition ${
-                      active
-                        ? "shadow-sm"
-                        : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
-                    }`}
-                  >
-                    {/* Logo is decorative here — the visible name is the chip's
-                        accessible label, so hide it from AT to avoid double-speak. */}
-                    <span aria-hidden="true" className="inline-flex">
-                      <SupermarketLogo supermarket={store} />
-                    </span>
-                    <span>{store.name}</span>
-                  </button>
-                );
-              })}
+              {storeChips}
             </div>
           </aside>
         )}
@@ -354,31 +373,70 @@ export function OffersFeed() {
               panel's own opaque surface covers grid cards scrolling underneath,
               so no frosted backdrop is needed. */}
           <div
-            className={`${styles.panel} ${styles.reveal} sticky top-0 z-30 mb-6 flex flex-col gap-2.5`}
+            className={`${styles.panel} ${styles.reveal} sticky top-0 z-30 mb-4 flex flex-col gap-2.5 sm:mb-6`}
           >
             {/* Timeframe: this week vs. next week's ad. A primary view switch, so
                 it sits above the search/sort row. Same segmented-control styling
-                as the desktop sort control for visual consistency. */}
-            <div
-              role="group"
-              aria-label={t("timeframe.label")}
-              className="flex self-start rounded-full bg-muted p-1 text-sm"
-            >
-              {TIMEFRAMES.map((tf) => (
+                as the desktop sort control for visual consistency. Shares its row
+                with the mobile-only store-filter disclosure toggle (right). */}
+            <div className="flex items-center justify-between gap-2">
+              <div
+                role="group"
+                aria-label={t("timeframe.label")}
+                className="flex self-start rounded-full bg-muted p-1 text-sm"
+              >
+                {TIMEFRAMES.map((tf) => (
+                  <button
+                    key={tf.value}
+                    onClick={() => setTimeframe(tf.value)}
+                    aria-pressed={timeframe === tf.value}
+                    className={`rounded-full px-4 py-1.5 font-medium whitespace-nowrap transition ${
+                      timeframe === tf.value
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {t(tf.labelKey)}
+                  </button>
+                ))}
+              </div>
+
+              {/* Mobile store-filter toggle — hidden at lg where the sidebar shows
+                  the chips directly. Badge shows the active store count. */}
+              {stores.length > 0 && (
                 <button
-                  key={tf.value}
-                  onClick={() => setTimeframe(tf.value)}
-                  aria-pressed={timeframe === tf.value}
-                  className={`rounded-full px-4 py-1.5 font-medium whitespace-nowrap transition ${
-                    timeframe === tf.value
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
+                  type="button"
+                  onClick={() => setStoresOpen((o) => !o)}
+                  aria-expanded={storesOpen}
+                  aria-controls="store-filter-mobile"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium text-muted-foreground transition hover:border-foreground/40 hover:text-foreground lg:hidden"
                 >
-                  {t(tf.labelKey)}
+                  {t("filter.stores")}
+                  {supermarkets.length > 0 && (
+                    <span className="grid min-w-5 place-items-center rounded-full bg-foreground px-1 text-xs font-semibold text-background tabular-nums">
+                      {supermarkets.length}
+                    </span>
+                  )}
+                  <ChevronDown
+                    className={`size-4 transition-transform ${storesOpen ? "rotate-180" : ""}`}
+                    aria-hidden
+                  />
                 </button>
-              ))}
+              )}
             </div>
+
+            {/* Collapsible store chips (mobile only). Rendered when open as a
+                horizontal scroll row; the desktop sidebar carries them at lg+. */}
+            {stores.length > 0 && storesOpen && (
+              <div
+                id="store-filter-mobile"
+                role="group"
+                aria-label={t("filter.stores")}
+                className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:hidden"
+              >
+                {storeChips}
+              </div>
+            )}
 
             {/* Search (debounced, Postgres FTS) + sort as a segmented control. */}
             <div className="flex items-center gap-2 lg:gap-3 lg:justify-between">
@@ -519,7 +577,7 @@ export function OffersFeed() {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-3 lg:gap-4 xl:grid-cols-4">
                 {isPending
                   ? Array.from({ length: 8 }).map((_, i) => <OfferSkeleton key={i} />)
                   : // Each card sits in a reveal wrapper (not the card itself) so

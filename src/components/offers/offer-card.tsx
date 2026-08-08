@@ -66,7 +66,7 @@ function ProductImage({
           decoding="async"
           onLoad={() => setStatus("loaded")}
           onError={() => setStatus("error")}
-          className={`absolute inset-0 h-full w-full object-contain p-6 transition-[transform,opacity] duration-500 ease-out group-hover:scale-105 ${
+          className={`absolute inset-0 h-full w-full object-contain p-3 transition-[transform,opacity] duration-500 ease-out group-hover:scale-105 sm:p-6 ${
             status === "loaded" ? "opacity-100" : "opacity-0"
           }`}
         />
@@ -100,18 +100,22 @@ function PriceTag({
   lead: string;
 }) {
   if (sale == null) {
-    return <div className="text-xl font-bold tracking-tight text-card-foreground">{lead}</div>;
+    return (
+      <div className="text-base font-bold tracking-tight text-card-foreground sm:text-xl">
+        {lead}
+      </div>
+    );
   }
   const { whole, cents } = splitEuro(sale);
   return (
-    <div className="flex items-baseline gap-2">
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
       <div className="flex items-start tracking-tight tabular-nums text-card-foreground">
-        <span className="mt-0.5 text-base font-semibold">€</span>
-        <span className="text-3xl leading-none font-extrabold">{whole}</span>
-        <span className="mt-0.5 text-lg font-bold">{cents}</span>
+        <span className="mt-0.5 text-sm font-semibold sm:text-base">€</span>
+        <span className="text-2xl leading-none font-extrabold sm:text-3xl">{whole}</span>
+        <span className="mt-0.5 text-base font-bold sm:text-lg">{cents}</span>
       </div>
       {original != null && (
-        <span className="text-sm text-muted-foreground line-through tabular-nums">
+        <span className="text-xs text-muted-foreground line-through tabular-nums sm:text-sm">
           {euro.format(original)}
         </span>
       )}
@@ -146,31 +150,31 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
 
   return (
     <div className="group relative flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-border transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl">
-      <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-neutral-50 to-neutral-100">
+      <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-neutral-50 to-neutral-100 sm:aspect-square">
         <ProductImage
           src={offer.product.imageUrl}
           alt={productName}
           emptyLabel={t("card.noImage")}
         />
 
-        <div className="absolute top-3 left-3">
+        <div className="absolute top-2 left-2 sm:top-3 sm:left-3">
           <SupermarketLogo supermarket={offer.supermarket} />
         </div>
-        <div className="absolute top-3 right-3 flex flex-col gap-2">
-          <FavoriteButton productId={offer.product.id} />
-          <BasketButton productId={offer.product.id} />
+        <div className="absolute top-2 right-2 flex flex-col gap-1.5 sm:top-3 sm:right-3 sm:gap-2">
+          <FavoriteButton productId={offer.product.id} className="size-8 sm:size-10" />
+          <BasketButton productId={offer.product.id} className="size-8 sm:size-10" />
         </div>
 
-        <div className="absolute bottom-3 left-3">
+        <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3">
           {discount > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1.5 text-sm font-bold tabular-nums text-white shadow-md">
-              <TrendingDown className="size-3.5" strokeWidth={2.5} aria-hidden />
+            <span className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-1.5 py-1 text-[10px] font-bold tabular-nums text-white shadow-md sm:px-2.5 sm:py-1.5 sm:text-sm">
+              <TrendingDown className="size-3 sm:size-3.5" strokeWidth={2.5} aria-hidden />
               {`-${discount}%`}
             </span>
           ) : (
             dealText && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 px-2.5 py-1.5 text-sm font-semibold text-white shadow-md">
-                <Tag className="size-3.5" strokeWidth={2.5} aria-hidden />
+              <span className="inline-flex items-center gap-1 rounded-lg bg-neutral-900 px-1.5 py-1 text-[10px] font-semibold text-white shadow-md sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-sm">
+                <Tag className="size-3 sm:size-3.5" strokeWidth={2.5} aria-hidden />
                 {dealText}
               </span>
             )
@@ -178,9 +182,9 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-2 p-4">
+      <div className="flex flex-1 flex-col gap-1 p-2 sm:gap-2 sm:p-3">
         {offer.isBestDeal && (
-          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 sm:px-2 sm:text-xs">
             <Star className="size-3 fill-amber-500 text-amber-500" aria-hidden />
             {t("card.bestDeal")}
           </span>
@@ -191,12 +195,12 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
             href={safeHref(offer.product.url)!}
             target="_blank"
             rel="noopener noreferrer"
-            className="line-clamp-2 min-h-10 text-sm leading-snug font-medium text-card-foreground hover:underline"
+            className="line-clamp-2 min-h-8 text-xs leading-snug font-medium text-card-foreground hover:underline sm:min-h-10 sm:text-sm"
           >
             {productName}
           </a>
         ) : (
-          <h3 className="line-clamp-2 min-h-10 text-sm leading-snug font-medium text-card-foreground">
+          <h3 className="line-clamp-2 min-h-8 text-xs leading-snug font-medium text-card-foreground sm:min-h-10 sm:text-sm">
             {productName}
           </h3>
         )}
@@ -205,7 +209,7 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
           <PriceTag sale={sale} original={original} lead={priceLead} />
         </div>
 
-        <div className="mt-2 flex items-center justify-between border-t border-border pt-2.5 text-xs text-muted-foreground">
+        <div className="mt-1 flex items-center justify-between border-t border-border pt-1.5 text-[11px] text-muted-foreground sm:mt-2 sm:pt-2.5 sm:text-xs">
           <span className="tabular-nums">{unit ?? " "}</span>
           <span className="inline-flex items-center gap-1 whitespace-nowrap">
             <Calendar className="size-3 shrink-0" aria-hidden />
