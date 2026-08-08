@@ -7,6 +7,10 @@
 // wins, so order encodes priority. This matters for overlaps — e.g. "kipworst"
 // hits VLEES before anything else, and SODA is checked before the broader
 // DRANKEN so "cola" doesn't get swallowed by generic "drinken".
+//
+// A keyword may carry a leading sentinel to change how it matches (see
+// keywordHit): "=kw" = whole word only, "*kw" = substring anywhere. A bare
+// keyword matches at a word START (the Dutch-compound-friendly default).
 import { Category } from "@prisma/client";
 
 /** Ordered rules: the first with a keyword hit decides the category. */
@@ -71,7 +75,10 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
   {
     category: Category.ALCOHOL,
     keywords: [
-      "bier", "pils", "pilsener", "radler", "wijn", "rosé", "prosecco", "cava",
+      // "*bier" matches "bier" ANYWHERE, so suffix compounds a word-start match
+      // would miss ("craftbier", "witbier", "speciaalbier", "bokbier") still land
+      // in ALCOHOL. Fish/meat/soda run first, so "bierworst" is already VLEES.
+      "*bier", "pils", "pilsener", "radler", "wijn", "rosé", "prosecco", "cava",
       "champagne", "mousserend", "wodka", "vodka", "whisky", "whiskey", "bourbon",
       "rum", "likeur", "gin", "jenever", "vieux", "cognac", "brandy", "vermout",
       "vermouth", "tequila", "sherry", "port", "aperitief", "gedistilleerd",
@@ -127,8 +134,12 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
   {
     category: Category.KAAS,
     keywords: [
+      // No bare "gouda": the town/possessive shows up in NON-cheese brands (the
+      // sauce line "Gouda's Glorie"), while real Gouda cheese is named "Goudse …"
+      // and always carries "kaas"/"belegen". Adding "goudse" is unsafe too — it
+      // would swallow "Goudse stroopwafels" (a snack), so we rely on kaas/belegen.
       "kaas", "kaasplak", "mozzarella", "brie", "camembert", "geraspte",
-      "parmezaan", "feta", "roomkaas", "smeerkaas", "milner", "gouda", "belegen",
+      "parmezaan", "feta", "roomkaas", "smeerkaas", "milner", "belegen",
     ],
   },
   {
@@ -153,8 +164,10 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
   {
     category: Category.GROENTE,
     keywords: [
+      // "=ui" = whole word only: bare word-start "ui" wrongly hit "Uiltje" (a beer
+      // brand), "uitsmijter", "uier"… The plural "uien" keeps its word-start match.
       "groente", "aardappel", "tomaat", "komkommer", "sla", "ijsbergsla",
-      "ijsberg", "kropsla", "salade", "paprika", "ui", "uien", "wortel",
+      "ijsberg", "kropsla", "salade", "paprika", "=ui", "uien", "wortel",
       "broccoli", "champignon", "spinazie", "courgette", "bloemkool", "prei",
       "boon", "bonen", "sperzieboon", "erwt", "andijvie", "witlof", "rucola",
       "radijs", "asperge", "knoflook", "pompoen", "biet", "spruit", "spitskool",
@@ -180,7 +193,7 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
     keywords: [
       "chips", "zoutjes", "noten", "borrelnoot", "snoep", "chocolade", "chocola",
       "reep", "koek", "biscuit", "drop", "winegum", "pinda", "popcorn", "toffee",
-      "m&m", "snickers", "haribo", "stroopwafel", "tuc", "cracker",
+      "m&m", "snickers", "haribo", "stroopwafel", "tuc", "cracker", "oreo",
     ],
   },
   {
@@ -197,6 +210,9 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
       "wasmiddel", "wasverzachter", "afwasmiddel", "vaatwas", "schoonmaak",
       "allesreiniger", "toiletpapier", "keukenrol", "vuilniszak", "aluminiumfolie",
       "wc-papier", "luchtverfrisser", "afwas", "glansspoel", "wasgel",
+      // Pest control ("insectenverdelger", "muggenstekker", "mierenlokdoos") —
+      // non-food; "insect" (word start) covers insecten/insectenspray/-verdelger.
+      "insect", "muggen", "mieren", "wespen", "ongedierte",
     ],
   },
   {
@@ -250,19 +266,60 @@ function matchesWordStart(haystack: string, keyword: string): boolean {
 }
 
 /**
- * Best-effort category for a scraped product. Combines the product name with
- * any subcategory/brand hints the source gives. Falls back to HOUDBAAR (the
- * generic "ambient groceries" bucket) when nothing matches.
+ * Does `keyword` occur as a WHOLE word (bounded on both sides) in `haystack`?
+ * For short, prefix-greedy tokens where a word-start match over-reaches — "ui"
+ * (onion) must match "rode ui" but not "Uiltje" / "uitsmijter" / "uier".
+ */
+function matchesWholeWord(haystack: string, keyword: string): boolean {
+  let i = haystack.indexOf(keyword);
+  while (i !== -1) {
+    const leftOk = i === 0 || !isWordChar(haystack[i - 1]);
+    const end = i + keyword.length;
+    const rightOk = end >= haystack.length || !isWordChar(haystack[end]);
+    if (leftOk && rightOk) return true;
+    i = haystack.indexOf(keyword, i + 1);
+  }
+  return false;
+}
+
+/**
+ * Match a keyword against `haystack`, honouring an optional leading sentinel:
+ *   "=kw" → whole word only    (matchesWholeWord)
+ *   "*kw" → substring anywhere  (plain includes — for suffix compounds)
+ *   "kw"  → word start (default)
+ */
+function keywordHit(haystack: string, keyword: string): boolean {
+  if (keyword[0] === "=") return matchesWholeWord(haystack, keyword.slice(1));
+  if (keyword[0] === "*") return haystack.includes(keyword.slice(1));
+  return matchesWordStart(haystack, keyword);
+}
+
+/** First rule with a keyword hit in `haystack`, or null when nothing matches. */
+function classify(haystack: string): Category | null {
+  for (const { category, keywords } of RULES) {
+    for (const kw of keywords) {
+      if (keywordHit(haystack, kw)) return category;
+    }
+  }
+  return null;
+}
+
+/**
+ * Best-effort category for a scraped product. The product NAME is authoritative:
+ * if it carries any category keyword we classify on it alone. Only when the name
+ * is inconclusive do we fold in the source's hints (brand / pack size / section
+ * label). This mirrors every scraper's documented "a name keyword wins; else the
+ * section fallback" intent and stops a broad hint (a brand like "Uiltje", a
+ * marketing subtitle mentioning "groente") from dragging a product into the wrong
+ * bucket. Falls back to HOUDBAAR (the generic "ambient groceries" bucket) when
+ * neither the name nor the hints match anything.
  */
 export function categorize(
   name: string,
   hints: (string | null | undefined)[] = [],
 ): Category {
-  const haystack = normalize([name, ...hints].filter(Boolean).join(" "));
-  for (const { category, keywords } of RULES) {
-    for (const kw of keywords) {
-      if (matchesWordStart(haystack, kw)) return category;
-    }
-  }
-  return Category.HOUDBAAR;
+  const byName = classify(normalize(name));
+  if (byName != null) return byName;
+  const withHints = classify(normalize([name, ...hints].filter(Boolean).join(" ")));
+  return withHints ?? Category.HOUDBAAR;
 }

@@ -46,3 +46,57 @@ test("a normal soft drink is unaffected by KOFFIE", () => {
   assert.equal(categorize("Coca-Cola Zero"), Category.SODA);
   assert.equal(categorize("Spa Reine bronwater"), Category.DRANKEN); // water → DRANKEN
 });
+
+// --- Regression: category filter bugs reported from the live feed (2026-08-09).
+//     Each product was showing under the wrong filter chip; the comment names the
+//     wrong bucket it used to land in and the root cause. ---
+
+test("beer compounds land in ALCOHOL, not GROENTE (word-start 'bier' missed them)", () => {
+  // "Craftbier" has no word-START "bier"; the substring token "*bier" now catches it.
+  assert.equal(categorize("Craftbier"), Category.ALCOHOL);
+  assert.equal(categorize("Witbier"), Category.ALCOHOL);
+  assert.equal(categorize("Speciaalbier"), Category.ALCOHOL);
+  assert.equal(categorize("Bok bier"), Category.ALCOHOL);
+  // …and the Aldi brand hint "Uiltje" must NOT drag it into GROENTE via "ui".
+  assert.equal(categorize("Craftbier", ["Uiltje"]), Category.ALCOHOL);
+});
+
+test("'ui' (onion) is a whole-word match — brands/dishes starting 'ui' don't become GROENTE", () => {
+  assert.equal(categorize("Rode ui"), Category.GROENTE); // real onion still matches
+  assert.equal(categorize("Uien"), Category.GROENTE); // plural keeps its word-start rule
+  assert.notEqual(categorize("Uiltje"), Category.GROENTE); // beer brand ≠ onion
+  assert.notEqual(categorize("Uitsmijter"), Category.GROENTE); // egg dish ≠ onion
+});
+
+test("the 'Gouda's Glorie' sauce brand lands in HOUDBAAR, not KAAS", () => {
+  assert.equal(categorize("Mad sauce of Gouda's Glorie saus"), Category.HOUDBAAR);
+  assert.equal(categorize("Gouda's Glorie samurai saus"), Category.HOUDBAAR);
+  // Real Gouda cheese still reaches KAAS — it carries "kaas" / "belegen".
+  assert.equal(categorize("Goudse kaasstukken"), Category.KAAS);
+  assert.equal(categorize("Goudse belegen 48+"), Category.KAAS);
+});
+
+test("Oreo classifies as SNACKS_SNOEP from the name (not via a bakery section hint)", () => {
+  // Dirk lists Oreo under "Brood, beleg & koek", whose section fallback is
+  // BROOD_BANKET. A name keyword must win so the fallback never fires.
+  assert.equal(categorize("Oreo enrobed"), Category.SNACKS_SNOEP);
+  assert.equal(categorize("Oreo enrobed", ["Brood, beleg & koek"]), Category.SNACKS_SNOEP);
+});
+
+test("pest control is HUISHOUDEN — a marketing subtitle can't pull it into a food bucket", () => {
+  assert.equal(categorize("Insectenverdelger"), Category.HUISHOUDEN);
+  // The reported bug: a descriptive hint mentioning "groente" beat the name.
+  // Name-first classification means the name now wins.
+  assert.equal(
+    categorize("Insectenverdelger", ["Beschermt groente en fruit in de tuin"]),
+    Category.HUISHOUDEN,
+  );
+  assert.equal(categorize("Muggenstekker navulling"), Category.HUISHOUDEN);
+});
+
+test("name-first: a name keyword beats a hint from an earlier-priority rule", () => {
+  // A clean cheese name stays KAAS even if a hint mentions an earlier category.
+  assert.equal(categorize("Jong belegen plakken", ["Vlees, vis & vega"]), Category.KAAS);
+  // A name with no keyword still falls back to the hint (unchanged behaviour).
+  assert.equal(categorize("Assortiment", ["diepvries pizza"]), Category.DIEPVRIES);
+});
