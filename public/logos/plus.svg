@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="PLUS">
+  <!-- Four-petal flower mark: each petal is a rounded square whose corner facing
+       the centre is sharper, so the negative space reads as a plus. -->
+  <!-- top-left: green -->
+  <path fill="#7FB539" d="M173,30 L210,30 Q288,30 288,108 L288,193 Q288,223 258,223 L173,223 Q95,223 95,145 L95,108 Q95,30 173,30 Z"/>
+  <!-- top-right: red -->
+  <path fill="#E52620" d="M390,30 L427,30 Q505,30 505,108 L505,145 Q505,223 427,223 L342,223 Q312,223 312,193 L312,108 Q312,30 390,30 Z"/>
+  <!-- bottom-left: blue -->
+  <path fill="#4A6DA6" d="M173,247 L258,247 Q288,247 288,277 L288,362 Q288,440 210,440 L173,440 Q95,440 95,362 L95,325 Q95,247 173,247 Z"/>
+  <!-- bottom-right: dark green -->
+  <path fill="#135C3C" d="M342,247 L427,247 Q505,247 505,325 L505,362 Q505,440 427,440 L390,440 Q312,440 312,362 L312,277 Q312,247 342,247 Z"/>
+  <!-- PLUS wordmark -->
+  <text x="300" y="528" text-anchor="middle" dominant-baseline="central"
+        font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="120"
+        letter-spacing="2" fill="#7FB539">PLUS</text>
+</svg>

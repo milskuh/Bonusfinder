@@ -14,10 +14,12 @@ import { lidl } from "./sources/lidl";
 import { dirk } from "./sources/dirk";
 import { dekamarkt } from "./sources/dekamarkt";
 import { gall } from "./sources/gall";
+import { plus } from "./sources/plus";
+import { vomar } from "./sources/vomar";
 import { persistOffers } from "./persist";
 import type { Scraper } from "./types";
 
-const SCRAPERS: Scraper[] = [hoogvliet, albertHeijn, jumbo, aldi, lidl, dirk, dekamarkt, gall];
+const SCRAPERS: Scraper[] = [hoogvliet, albertHeijn, jumbo, aldi, lidl, dirk, dekamarkt, gall, plus, vomar];
 
 async function main() {
   const args = process.argv.slice(2);

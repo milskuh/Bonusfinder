@@ -28,6 +28,8 @@ const BRANDS: Record<string, SupermarketBrand> = {
   dirk: { badge: "DIRK", color: "#e30613", foreground: "#ffffff" }, // Dirk red (site theme colour)
   dekamarkt: { badge: "DEKA", color: "#e6007e", foreground: "#ffffff" }, // DekaMarkt magenta
   gall: { badge: "G&G", color: "#8b1a2b", foreground: "#ffffff" }, // Gall & Gall bordeaux red
+  plus: { badge: "PLUS", color: "#7fb539", foreground: "#ffffff" }, // PLUS apple green
+  vomar: { badge: "VOMAR", color: "#e2001a", foreground: "#ffffff" }, // Vomar red
 };
 
 /** Neutral identity for stores not yet in the map (keeps new slugs from crashing). */

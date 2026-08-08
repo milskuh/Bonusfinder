@@ -12,8 +12,7 @@ const db = new PrismaClient();
 
 // Real Dutch supermarket chains. Logos are self-hosted brand assets under
 // public/logos/ (referenced by web path, so they resolve the moment a store's
-// offers are ingested). Every store here has a scraper except "plus", which is
-// kept as a reference row (no local asset yet → keeps its remote logo).
+// offers are ingested). Every store here has a scraper.
 const supermarkets = [
   { slug: "hoogvliet", name: "Hoogvliet", logoUrl: "/logos/hoogvliet.png" },
   { slug: "ah", name: "Albert Heijn", logoUrl: "/logos/ah.svg" },
@@ -23,7 +22,8 @@ const supermarkets = [
   { slug: "dirk", name: "Dirk", logoUrl: "/logos/dirk.svg" },
   { slug: "dekamarkt", name: "DekaMarkt", logoUrl: "/logos/deka.png" },
   { slug: "gall", name: "Gall & Gall", logoUrl: "/logos/gall.jpg" },
-  { slug: "plus", name: "PLUS", logoUrl: "https://logo.clearbit.com/plus.nl" },
+  { slug: "plus", name: "PLUS", logoUrl: "/logos/plus.svg" },
+  { slug: "vomar", name: "Vomar", logoUrl: "/logos/vomar.svg" },
 ];
 
 async function main() {

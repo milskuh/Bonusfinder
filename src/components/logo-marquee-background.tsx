@@ -21,6 +21,7 @@ const LOGOS: Logo[] = [
   { src: "/logos/hoogvliet.png", alt: "Hoogvliet" },
   { src: "/logos/deka.png", alt: "DekaMarkt" },
   { src: "/logos/gall.jpg", alt: "Gall & Gall" },
+  { src: "/logos/plus.svg", alt: "PLUS" },
 ];
 
 type Row = { offset: number; reverse: boolean; duration: number };
@@ -37,10 +38,10 @@ const ROWS: Row[] = [
   { offset: 3, reverse: false, duration: 42 },
 ];
 
-// How many copies of the 8-logo set make up each track. Must be EVEN: the track
+// How many copies of the logo set make up each track. Must be EVEN: the track
 // is two identical halves and the CSS scrolls it by -50% (one half), so the loop
 // is seamless. One half must be wider than the viewport or the gutters go bare as
-// the track drifts — one set is ~1150px wide, so 4 sets/half (~4600px) covers
+// the track drifts — one set is ~1300px wide, so 4 sets/half (~5200px) covers
 // every realistic screen. Total = COPIES/2 sets per half.
 const COPIES = 8;
 
