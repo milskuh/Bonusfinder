@@ -23,6 +23,7 @@ enum Category {
   FRUIT // fruit
   VLEES // vlees, kip, gehakt, worst
   VIS // vis, zeevruchten
+  VEGETARISCH // vlees-/visvervangers & expliciet vegetarische/vegan producten
   ZUIVEL // melk, yoghurt, boter (excl. eieren)
   EIEREN // eieren
   KAAS
@@ -30,6 +31,7 @@ enum Category {
   DRANKEN // sappen, koffie, thee, water (non-alcoholisch)
   ALCOHOL // bier, wijn, sterke drank (Gall & Gall, slijterij)
   SODA // frisdrank / soda
+  KOFFIE // koffiebonen, -pads, -capsules, oploskoffie, RTD-koffie
   PASTA_RIJST // pasta, rijst, noedels, wereldkeuken
   SNACKS_SNOEP
   DIEPVRIES

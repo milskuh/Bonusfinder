@@ -11,6 +11,26 @@ import { Category } from "@prisma/client";
 
 /** Ordered rules: the first with a keyword hit decides the category. */
 const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> = [
+  // --- Vegetarian / vegan FIRST. These products deliberately imitate meat and
+  //     fish ("vegetarische kipstukjes", "vegan burger", plant "tonijn"), so
+  //     their names contain VLEES/VIS/GROENTE keywords. Checking VEGETARISCH ahead
+  //     of all of those routes them here instead of into the animal buckets.
+  //     Because it runs first the keyword list is deliberately TIGHT — only genuine
+  //     veg/vegan signals, so it can't swallow ordinary produce or dairy.
+  //     Deliberately EXCLUDED: bare "plantaardig(e)" (too broad — would pull
+  //     plant-milk/-butter out of ZUIVEL/DRANKEN) and "valess" (dairy-based, rare).
+  {
+    category: Category.VEGETARISCH,
+    keywords: [
+      // "vegetarisch" also covers "vegetarische" (word-start match); "vegan"
+      // covers "veganistisch". "vleesvervang" covers vleesvervanger(s).
+      "vegetarisch", "vegan", "veggie", "vleesvervang",
+      "tofu", "tempeh", "seitan", "quorn", "falafel",
+      // Known NL substitute brands whose product names carry no veg/vegan word.
+      // ("vegetarische slager" is already caught by "vegetarisch".)
+      "vivera", "garden gourmet", "beyond", "goodbite", "schouten",
+    ],
+  },
   // --- Fish before meat, so "vissticks" / "tonijn" never fall into VLEES. ---
   {
     category: Category.VIS,
@@ -57,12 +77,32 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
       "vermouth", "tequila", "sherry", "port", "aperitief", "gedistilleerd",
     ],
   },
-  // --- Other (non-alcoholic) drinks: juice, water, coffee, tea. ---
+  // --- Coffee, ahead of the non-alcoholic DRANKEN/ONTBIJT block so it gets its
+  //     own bucket instead of the generic "dranken". Placed AFTER ALCOHOL on
+  //     purpose: a coffee *liqueur* ("koffielikeur") should stay ALCOHOL, so let
+  //     the ALCOHOL rule claim it first; only non-alcoholic coffee reaches here.
+  //     Word-start matching means a bare "koffie" catches koffiebonen, -pads,
+  //     -cups, -capsules and -melk, but compounds that start with something else
+  //     (oploskoffie, filterkoffie) must be listed explicitly.
+  //     Decision: "koffiemelk" (coffee creamer) lands in KOFFIE (via "koffie") —
+  //     it lives in the coffee aisle. Add a "koffiemelk" token to ZUIVEL above if
+  //     it should be dairy instead.
+  {
+    category: Category.KOFFIE,
+    keywords: [
+      "koffie", "oploskoffie", "filterkoffie",
+      "espresso", "cappuccino", "lungo", "ristretto", "macchiato", "latte",
+      "senseo", "nespresso", "nescafe", "nescafé", "dolce gusto",
+    ],
+  },
+  // --- Other (non-alcoholic) drinks: juice, water, tea. (Coffee is handled by
+  //     the KOFFIE rule above, so its keywords are intentionally not repeated
+  //     here.) ---
   {
     category: Category.DRANKEN,
     keywords: [
-      "sap", "jus", "juice", "smoothie", "water", "spa", "bronwater", "koffie",
-      "capsule", "espresso", "senseo", "nespresso", "thee", "drank",
+      "sap", "jus", "juice", "smoothie", "water", "spa", "bronwater",
+      "thee", "drank",
     ],
   },
   // --- Eggs before dairy, so "eieren" doesn't fall into ZUIVEL. ---
