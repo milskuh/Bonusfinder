@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Loader2, Search, X } from "lucide-react";
 import { useOffers } from "@/hooks/use-offers";
 import { useSupermarkets } from "@/hooks/use-supermarkets";
 import type { OfferSort, Timeframe } from "@/lib/validation/filters";
-import { categoryLabel, CATEGORY_ORDER } from "@/lib/categories";
+import { categoryLabel, sortCategoriesByLabel } from "@/lib/categories";
 import { supermarketBrand } from "@/lib/supermarkets";
 import { useLang } from "@/components/language-provider";
 import type { TKey } from "@/lib/i18n";
@@ -49,6 +49,8 @@ function OfferSkeleton() {
 
 export function OffersFeed() {
   const { t, locale } = useLang();
+  // Filter chips read alphabetically in whichever language is active.
+  const orderedCategories = useMemo(() => sortCategoriesByLabel(locale), [locale]);
   const [sort, setSort] = useState<OfferSort>("newest");
   const [timeframe, setTimeframe] = useState<Timeframe>("current");
   const [categories, setCategories] = useState<string[]>([]);
@@ -529,7 +531,7 @@ export function OffersFeed() {
                 >
                   {t("filter.all")}
                 </button>
-                {CATEGORY_ORDER.map((cat) => {
+                {orderedCategories.map((cat) => {
                   const active = categories.includes(cat);
                   return (
                     <button

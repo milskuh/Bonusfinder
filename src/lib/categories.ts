@@ -62,29 +62,26 @@ export function categoryLabel(category: Category, locale: Locale): string {
   return CATEGORY_LABELS[locale][category] ?? CATEGORY_LABELS.nl[category];
 }
 
-/** Categories in the order they should appear in the filter bar. */
-export const CATEGORY_ORDER: Category[] = [
-  Category.GROENTE,
-  Category.FRUIT,
-  Category.VLEES,
-  Category.VIS,
-  Category.VEGETARISCH,
-  Category.ZUIVEL,
-  Category.EIEREN,
-  Category.KAAS,
-  Category.BROOD_BANKET,
-  Category.PASTA_RIJST,
-  Category.DRANKEN,
-  Category.ALCOHOL,
-  Category.SODA,
-  Category.KOFFIE,
-  Category.SNACKS_SNOEP,
-  Category.DIEPVRIES,
-  Category.ONTBIJT,
-  Category.HOUDBAAR,
-  Category.DROGISTERIJ,
-  Category.HUISHOUDEN,
-  Category.BABY_KIND,
-  Category.HUISDIER,
-  Category.OVERIG, // catch-all — last chip in the filter bar
-];
+/** All selectable categories (unordered — use CATEGORY_ORDER or sortCategoriesByLabel). */
+const ALL_CATEGORIES = Object.values(Category) as Category[];
+
+/**
+ * Categories sorted alphabetically by their display label in the given locale,
+ * so the filter chips read A→Z for whichever language is active. The OVERIG
+ * ("Overig" / "Other") catch-all is always pinned last rather than sorted in,
+ * since it's a residual bucket, not a real category.
+ */
+export function sortCategoriesByLabel(locale: Locale): Category[] {
+  const sorted = ALL_CATEGORIES.filter((c) => c !== Category.OVERIG).sort(
+    (a, b) =>
+      categoryLabel(a, locale).localeCompare(categoryLabel(b, locale), locale),
+  );
+  return [...sorted, Category.OVERIG];
+}
+
+/**
+ * Default category order for the filter bar (Dutch alphabetical, catch-all last).
+ * Prefer sortCategoriesByLabel(locale) in locale-aware UI so the order follows
+ * the active language.
+ */
+export const CATEGORY_ORDER: Category[] = sortCategoriesByLabel("nl");
