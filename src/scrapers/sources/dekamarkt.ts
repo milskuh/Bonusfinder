@@ -168,15 +168,19 @@ export function mapDekaSectionCategory(heading: string | undefined): Category | 
   }
 }
 
-/** Category for a card: a name keyword wins; else the section fallback; else HOUDBAAR. */
+/** Category for a card: a name keyword wins; else the section fallback; else OVERIG. */
 export function categoryFor(
   name: string,
   addition: string | null,
   sectionCategory: Category | null,
 ): Category {
   const byName = categorize(name, [addition]);
-  if (byName !== Category.HOUDBAAR) return byName;
-  return sectionCategory ?? Category.HOUDBAAR;
+  // HOUDBAAR and OVERIG are both "weak" name results: HOUDBAAR keywords are greedy
+  // (e.g. "suiker" hits "suikermais", which is really GROENTE) and OVERIG means no
+  // keyword at all — so a mapped section overrides either. A strong name keyword
+  // (VIS, KAAS, …) always wins; with no mapped section we keep the weak result.
+  if (byName !== Category.HOUDBAAR && byName !== Category.OVERIG) return byName;
+  return sectionCategory ?? byName;
 }
 
 // --- Validity helpers (exported for testing) -------------------------------

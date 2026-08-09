@@ -63,7 +63,8 @@ test("mapDekaSectionCategory maps the live headings (and null for mixed aisles)"
 test("categoryFor: a name keyword wins over the section, else the section fallback", () => {
   assert.equal(categoryFor("Verse Zalmfilet", null, Category.HOUDBAAR), Category.VIS);
   assert.equal(categoryFor("Onbekend merk", null, Category.DRANKEN), Category.DRANKEN);
-  assert.equal(categoryFor("Onbekend merk", null, null), Category.HOUDBAAR);
+  // No keyword and no mapped section → OVERIG (the catch-all), not HOUDBAAR.
+  assert.equal(categoryFor("Onbekend merk", null, null), Category.OVERIG);
 });
 
 // --- validity ---------------------------------------------------------------

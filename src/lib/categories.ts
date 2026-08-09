@@ -28,6 +28,7 @@ const CATEGORY_LABELS: Record<Locale, Record<Category, string>> = {
     HUISHOUDEN: "Huishouden",
     BABY_KIND: "Baby & kind",
     HUISDIER: "Huisdier",
+    OVERIG: "Overig",
   },
   en: {
     GROENTE: "Vegetables",
@@ -52,6 +53,7 @@ const CATEGORY_LABELS: Record<Locale, Record<Category, string>> = {
     HUISHOUDEN: "Household",
     BABY_KIND: "Baby & kids",
     HUISDIER: "Pets",
+    OVERIG: "Other",
   },
 };
 
@@ -84,4 +86,5 @@ export const CATEGORY_ORDER: Category[] = [
   Category.HUISHOUDEN,
   Category.BABY_KIND,
   Category.HUISDIER,
+  Category.OVERIG, // catch-all — last chip in the filter bar
 ];

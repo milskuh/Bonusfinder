@@ -41,6 +41,7 @@ enum Category {
   HUISHOUDEN
   BABY_KIND
   HUISDIER
+  OVERIG // "overig" — catch-all for products no keyword or section matches
 }
 
 model Supermarket {

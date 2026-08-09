@@ -102,7 +102,10 @@ test("categoryFor: a name keyword wins over the section", () => {
 
 test("categoryFor: falls back to the section when the name has no keyword", () => {
   assert.equal(categoryFor("Onbekend artikel", null, Category.DIEPVRIES), Category.DIEPVRIES);
-  assert.equal(categoryFor("Onbekend artikel", null, null), Category.HOUDBAAR);
+  // A section that maps to real HOUDBAAR (e.g. "Voorraadkast") still lands there.
+  assert.equal(categoryFor("Onbekend artikel", null, Category.HOUDBAAR), Category.HOUDBAAR);
+  // No keyword and no mapped section → OVERIG (the catch-all), not HOUDBAAR.
+  assert.equal(categoryFor("Onbekend artikel", null, null), Category.OVERIG);
 });
 
 // --- validity ---------------------------------------------------------------

@@ -164,11 +164,14 @@ export function parseBonusGroup(g: BonusGroup, today = new Date()): ScrapedOffer
   const validUntil =
     asDate(g.validityPeriod?.end ?? g.bonusEndDate, true) ?? new Date(today.getTime() + 7 * 864e5);
 
-  // A strong keyword in the name wins (e.g. "cola" → SODA); otherwise fall back
-  // to the section AH itself filed the deal under, then the generic bucket.
+  // A strong name keyword wins (e.g. "cola" → SODA). A weak result — HOUDBAAR
+  // (greedy pantry keywords) or OVERIG (no keyword) — defers to the section AH
+  // filed the deal under; with no mapped section we keep the weak result.
   const byName = categorize(name);
   const category =
-    byName !== Category.HOUDBAAR ? byName : mapSectionCategory(g.category) ?? Category.HOUDBAAR;
+    byName !== Category.HOUDBAAR && byName !== Category.OVERIG
+      ? byName
+      : mapSectionCategory(g.category) ?? byName;
 
   return {
     name,

@@ -94,6 +94,38 @@ test("pest control is HUISHOUDEN — a marketing subtitle can't pull it into a f
   assert.equal(categorize("Muggenstekker navulling"), Category.HUISHOUDEN);
 });
 
+test("truly unmatched products fall back to OVERIG, not HOUDBAAR", () => {
+  // Nothing in the name (or hints) matches any keyword → OVERIG catch-all.
+  assert.equal(categorize("Onbekend cadeauartikel"), Category.OVERIG);
+  assert.equal(categorize("Xyzzy set", ["diverse soorten"]), Category.OVERIG);
+  // A real HOUDBAAR keyword is a definite pantry answer — it stays HOUDBAAR,
+  // proving OVERIG is only the no-match fallback, not a rename of HOUDBAAR.
+  assert.equal(categorize("Ketchup"), Category.HOUDBAAR);
+  // Suffix compounds ("*saus"/"*soep"/"*olie") that a word-start rule would miss
+  // still reach pantry rather than OVERIG.
+  assert.equal(categorize("Barbecuesaus"), Category.HOUDBAAR);
+  assert.equal(categorize("Tomatensoep"), Category.HOUDBAAR);
+  assert.equal(categorize("Olijfolie extra vierge"), Category.HOUDBAAR);
+  // …but the "oliebol" pastry is bakery, not caught by "*olie".
+  assert.equal(categorize("Oliebollen naturel"), Category.BROOD_BANKET);
+});
+
+test("suffix-compound meat/cheese/veg reach their real bucket, not OVERIG", () => {
+  // The category word is a SUFFIX ("*worst"/"*karbonade") or plural/compound that
+  // a word-start rule missed, so these used to fall through to the catch-all.
+  assert.equal(categorize("Grillworst of ossenworst"), Category.VLEES);
+  assert.equal(categorize("Schouder- of ribkarbonade"), Category.VLEES);
+  assert.equal(categorize("Gegrilde beenham"), Category.VLEES);
+  assert.equal(categorize("Saucijzen"), Category.VLEES);
+  assert.equal(categorize("Strooikaas"), Category.KAAS);
+  assert.equal(categorize("Bospeen"), Category.GROENTE);
+  assert.equal(categorize("Rauwkost"), Category.GROENTE);
+  // Guard: "*ham" was NOT used (it would hit "champignon"), so a mushroom is
+  // produce, never meat.
+  assert.equal(categorize("Champignons"), Category.GROENTE);
+  assert.notEqual(categorize("Kastanjechampignons"), Category.VLEES);
+});
+
 test("name-first: a name keyword beats a hint from an earlier-priority rule", () => {
   // A clean cheese name stays KAAS even if a hint mentions an earlier category.
   assert.equal(categorize("Jong belegen plakken", ["Vlees, vis & vega"]), Category.KAAS);

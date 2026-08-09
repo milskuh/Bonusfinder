@@ -116,7 +116,7 @@ export interface PlusResponse {
  * product name yields no keyword (the AH/Dirk pattern) — the label groups several
  * of our categories ("Vlees, kip, vis, vega"), so a name keyword wins first. The
  * "Wijn, bier, sterke drank" aisle backstops alcohol whose name is only a brand.
- * Non-food/mixed aisles return null so the name (then HOUDBAAR) decides.
+ * Non-food/mixed aisles return null so the name (then OVERIG) decides.
  */
 export function mapPlusCategory(label: string | undefined): Category | null {
   switch ((label ?? "").trim()) {
@@ -270,7 +270,9 @@ function toOffer(o: {
   // via the disambiguated mapPlusCategory(). (Same trap as the Dirk/AH section maps.)
   const byName = categorize(name);
   const category =
-    byName !== Category.HOUDBAAR ? byName : mapPlusCategory(o.categoryLabel) ?? Category.HOUDBAAR;
+    byName !== Category.HOUDBAAR && byName !== Category.OVERIG
+      ? byName
+      : mapPlusCategory(o.categoryLabel) ?? byName;
 
   const { contentAmount, contentUnit } = parsePlusContent(o.label, o.variant);
   const { validFrom, validUntil } = plusValidity(o.startDate, o.endDate, o.today);

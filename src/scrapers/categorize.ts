@@ -49,11 +49,17 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
   {
     category: Category.VLEES,
     keywords: [
-      "vlees", "kip", "kipfilet", "gehakt", "worst", "rundvlees", "varkens",
+      // "*worst"/"*karbonade" match anywhere — the meat word is a SUFFIX in
+      // "grillworst"/"ossenworst"/"ribkarbonade", which a word-start rule misses.
+      // ("*ham" would be unsafe — it hits "champignon" — so beenham/achterham are
+      // listed explicitly and bare "ham" stays word-start.)
+      "vlees", "kip", "kipfilet", "gehakt", "*worst", "rundvlees", "varkens",
       "varkensvlees", "biefstuk", "schnitzel", "hamburger", "speklap", "spek",
-      "shoarma", "kalkoen", "saucijs", "slavink", "gehaktbal", "rookworst",
-      "spareribs", "bacon", "ham", "salami", "cordon bleu", "runder", "lamsvlees",
-      "drumstick", "kipdij", "kippenpoot", "braadworst",
+      "shoarma", "kalkoen", "saucijs", "saucijzen", "slavink", "gehaktbal",
+      "spareribs", "bacon", "ham", "beenham", "achterham", "salami", "cordon bleu",
+      "runder", "lamsvlees", "drumstick", "kipdij", "kippenpoot",
+      "*karbonade", "buikspek", "chipolata", "kabanos", "chorizo", "paté",
+      "hotdog", "pulled pork", "corned beef",
     ],
   },
   // --- Soda / soft drinks, checked before ALCOHOL / the broader DRANKEN. ---
@@ -139,7 +145,7 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
       // and always carries "kaas"/"belegen". Adding "goudse" is unsafe too — it
       // would swallow "Goudse stroopwafels" (a snack), so we rely on kaas/belegen.
       "kaas", "kaasplak", "mozzarella", "brie", "camembert", "geraspte",
-      "parmezaan", "feta", "roomkaas", "smeerkaas", "milner", "belegen",
+      "parmezaan", "feta", "roomkaas", "smeerkaas", "milner", "belegen", "strooikaas",
     ],
   },
   {
@@ -147,7 +153,7 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
     keywords: [
       "brood", "stokbrood", "bolletjes", "croissant", "gebak", "taart", "cake",
       "koekje", "banket", "bakkerij", "pistolet", "beschuit", "crackers",
-      "muffin", "donut", "appeltaart", "vlaai",
+      "muffin", "donut", "appeltaart", "vlaai", "oliebol",
     ],
   },
   // --- Fruit before vegetables (both split out of the old GROENTE_FRUIT). ---
@@ -171,7 +177,7 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
       "broccoli", "champignon", "spinazie", "courgette", "bloemkool", "prei",
       "boon", "bonen", "sperzieboon", "erwt", "andijvie", "witlof", "rucola",
       "radijs", "asperge", "knoflook", "pompoen", "biet", "spruit", "spitskool",
-      "snackgroente", "snackgroenten",
+      "snackgroente", "snackgroenten", "rauwkost", "*peen", // "*peen": bospeen/waspeen/winterpeen
     ],
   },
   {
@@ -241,7 +247,12 @@ const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> 
   {
     category: Category.HOUDBAAR,
     keywords: [
-      "saus", "soep", "conserven", "olie", "azijn", "kruiden", "bouillon",
+      // "*saus"/"*soep"/"*olie" match anywhere: these are classic Dutch suffix
+      // compounds ("barbecuesaus", "tomatensoep", "olijfolie") a word-start rule
+      // would miss, wrongly dropping obvious pantry items into OVERIG. Earlier rules
+      // still win first ("knoflooksaus" → GROENTE, "kippensoep" → VLEES), and the
+      // "oliebol" pastry is caught by BROOD_BANKET above before "*olie" sees it.
+      "*saus", "*soep", "conserven", "*olie", "azijn", "kruiden", "bouillon",
       "meel", "suiker", "ketchup", "mayonaise", "curry", "blik", "pot",
     ],
   },
@@ -311,8 +322,12 @@ function classify(haystack: string): Category | null {
  * label). This mirrors every scraper's documented "a name keyword wins; else the
  * section fallback" intent and stops a broad hint (a brand like "Uiltje", a
  * marketing subtitle mentioning "groente") from dragging a product into the wrong
- * bucket. Falls back to HOUDBAAR (the generic "ambient groceries" bucket) when
- * neither the name nor the hints match anything.
+ * bucket. Falls back to OVERIG ("other" — the catch-all for genuinely unmatched
+ * products) when neither the name nor the hints match anything, rather than to
+ * HOUDBAAR: HOUDBAAR is a real pantry category reached via its own keywords
+ * ("saus", "olie", …). Both are "weak" results though — HOUDBAAR's keywords are
+ * greedy ("suiker" hits "suikermais") — so the section-fallback scrapers let a
+ * mapped section override either (see categoryFor in dirk.ts / dekamarkt.ts).
  */
 export function categorize(
   name: string,
@@ -321,5 +336,5 @@ export function categorize(
   const byName = classify(normalize(name));
   if (byName != null) return byName;
   const withHints = classify(normalize([name, ...hints].filter(Boolean).join(" ")));
-  return withHints ?? Category.HOUDBAAR;
+  return withHints ?? Category.OVERIG;
 }
