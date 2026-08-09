@@ -27,6 +27,22 @@ const SCRAPERS: Scraper[] = [hoogvliet, albertHeijn, jumbo, aldi, lidl, dirk, de
 // explicitly with `npm run db:scrape -- vomar`. Remove the slug here to re-enable.
 const DISABLED_BY_DEFAULT = new Set<string>(["vomar"]);
 
+// Freshness assertion (see DAILY_SCRAPE.md §5 G11 / §8). A healthy store always
+// returns offers; a store that returns fewer than its floor is almost certainly
+// dead — a changed site layout or a blocked request — not a genuinely empty ad.
+// When that happens we DON'T persist (an empty scrape must never overwrite a
+// store's live offers) and we set a non-zero exit code so the nightly job goes
+// RED instead of silently publishing an emptied feed. The exit code below is
+// what turns a "green but empty" run into an alert.
+//
+// Default floor is 1, i.e. any store returning 0 offers fails. Raise a store's
+// floor here if you want to also catch a partial collapse (e.g. a scraper that
+// normally finds ~250 but returns 3). Keep floors conservative to avoid false
+// alarms on a genuinely lighter ad week.
+const MIN_OFFERS: Record<string, number> = {};
+const DEFAULT_MIN_OFFERS = 1;
+const minOffersFor = (slug: string) => MIN_OFFERS[slug] ?? DEFAULT_MIN_OFFERS;
+
 async function main() {
   const args = process.argv.slice(2);
   const dry = args.includes("--dry");
@@ -47,6 +63,10 @@ async function main() {
     process.exit(1);
   }
 
+  // Collected for the end-of-run health summary and the process exit code.
+  const threw: string[] = [];
+  const staleStores: string[] = [];
+
   for (const scraper of selected) {
     const started = Date.now();
     console.log(`\n▶ Scraping ${scraper.name} (${scraper.slug})…`);
@@ -54,6 +74,20 @@ async function main() {
       const offers = await scraper.scrape();
       const secs = ((Date.now() - started) / 1000).toFixed(1);
       console.log(`  Found ${offers.length} offers in ${secs}s.`);
+
+      // Freshness gate: a below-floor result is a failed scrape, not an empty
+      // ad. Skip persisting it (never let it wipe the store's live offers) and
+      // mark the run for a non-zero exit so the nightly job alerts.
+      const floor = minOffersFor(scraper.slug);
+      if (offers.length < floor) {
+        console.error(
+          `  ✖ FRESHNESS: ${scraper.name} returned ${offers.length} offers (floor ${floor}). ` +
+            `Skipping persist so live offers are left intact.`,
+        );
+        staleStores.push(`${scraper.slug} (${offers.length})`);
+        process.exitCode = 1;
+        continue;
+      }
 
       if (dry) {
         const byCategory = offers.reduce<Record<string, number>>((acc, o) => {
@@ -79,8 +113,21 @@ async function main() {
       );
     } catch (err) {
       console.error(`  ✖ ${scraper.name} failed:`, err);
+      threw.push(scraper.slug);
       process.exitCode = 1;
     }
+  }
+
+  // End-of-run health summary. This is what a human (or the Actions failure
+  // email) scans first: green = every selected store returned a healthy ad.
+  const problems = [
+    ...(threw.length ? [`errored: ${threw.join(", ")}`] : []),
+    ...(staleStores.length ? [`below freshness floor: ${staleStores.join(", ")}`] : []),
+  ];
+  if (problems.length) {
+    console.error(`\n✖ Scrape finished with problems — ${problems.join("; ")}.`);
+  } else {
+    console.log(`\n✔ All ${selected.length} store(s) healthy.`);
   }
 }
 

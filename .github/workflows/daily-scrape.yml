@@ -1,0 +1,50 @@
+name: Daily scrape
+
+# Re-scrapes every store once a day and writes fresh offers (and re-bucketed
+# categories) to the production database.
+#
+# Triggers are ONLY `schedule` and `workflow_dispatch` — never `pull_request` —
+# so the repository secrets below are never exposed to fork pull requests on this
+# public repo. GitHub also masks secret values in logs.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   DATABASE_URL       pooled (PgBouncer) prod Supabase URL — same as Vercel
+#   DIRECT_URL         direct prod Supabase URL
+#   ANTHROPIC_API_KEY  used by the Vomar OCR/vision scraper
+on:
+  schedule:
+    # Target: 02:00 Europe/Amsterdam (deep night, zero user impact).
+    # GitHub cron is ALWAYS UTC with no DST support, so 02:00 local is a moving
+    # UTC target: 00:00 UTC = 02:00 CEST (summer) / 01:00 CET (winter). We run at
+    # 00:00 UTC and accept the 1h-early winter drift (still deep night). See
+    # DAILY_SCRAPE.md §4. Note: GitHub scheduled runs can be delayed 5–15+ min.
+    - cron: "0 0 * * *"
+  workflow_dispatch: {}
+
+# A run must never overlap the next day's run (the scrape can take ~10+ min).
+concurrency:
+  group: daily-scrape
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SCRAPE_DEBUG: "1" # per-store progress in the Actions log
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci # postinstall runs `prisma generate`
+      - name: Scrape all stores → prod DB
+        run: npm run db:scrape
