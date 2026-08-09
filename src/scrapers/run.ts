@@ -21,6 +21,12 @@ import type { Scraper } from "./types";
 
 const SCRAPERS: Scraper[] = [hoogvliet, albertHeijn, jumbo, aldi, lidl, dirk, dekamarkt, gall, plus, vomar];
 
+// Scrapers left OUT of a full run (i.e. when no slug args are given). Vomar's
+// OCR/vision folder reader isn't production-ready, so it must not run in the
+// scheduled/prod scrape — but it stays in SCRAPERS so it can still be exercised
+// explicitly with `npm run db:scrape -- vomar`. Remove the slug here to re-enable.
+const DISABLED_BY_DEFAULT = new Set<string>(["vomar"]);
+
 async function main() {
   const args = process.argv.slice(2);
   const dry = args.includes("--dry");
@@ -28,7 +34,11 @@ async function main() {
 
   const selected = slugs.length
     ? SCRAPERS.filter((s) => slugs.includes(s.slug))
-    : SCRAPERS;
+    : SCRAPERS.filter((s) => !DISABLED_BY_DEFAULT.has(s.slug));
+
+  if (!slugs.length && DISABLED_BY_DEFAULT.size) {
+    console.log(`(skipping by default: ${[...DISABLED_BY_DEFAULT].join(", ")} — pass the slug explicitly to run)`);
+  }
 
   if (selected.length === 0) {
     console.error(
