@@ -89,6 +89,10 @@ export function OffersFeed() {
     const storeSlugs = list("supermarkets");
     if (storeSlugs.length) setSupermarkets(storeSlugs);
     if (sp.get("timeframe") === "upcoming") setTimeframe("upcoming");
+    const sortParam = sp.get("sort");
+    if (sortParam && SORTS.some((s) => s.value === sortParam)) {
+      setSort(sortParam as OfferSort);
+    }
   }, []);
 
   // Debounce keystrokes (~300 ms) into the effective search term.
@@ -118,9 +122,11 @@ export function OffersFeed() {
     sync("supermarkets", supermarkets.join(","));
     // Only 'upcoming' is written; 'current' is the default, so it stays out of the URL.
     sync("timeframe", timeframe === "upcoming" ? "upcoming" : "");
+    // Only a non-default sort is written; 'newest' is the default, so it stays out of the URL.
+    sync("sort", sort === "newest" ? "" : sort);
     const qs = params.toString();
     window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
-  }, [query, categories, supermarkets, timeframe]);
+  }, [query, categories, supermarkets, timeframe, sort]);
 
   // When the active filters change, jump back to the top. With infinite scroll
   // the page grows very tall, so switching filters while scrolled deep would
@@ -170,11 +176,16 @@ export function OffersFeed() {
 
   // Empty-state copy. For an unfiltered 'next week' view, the deals simply aren't
   // published yet (see Phase 0: e.g. AH reveals them only from Friday), so
-  // reassure rather than imply an empty category. A search/filter miss keeps the
-  // generic message.
+  // reassure rather than imply an empty category. A text-search miss gets its own
+  // "no results for this search" wording (not "category"); a plain category/store
+  // filter miss keeps the generic message.
   const noNarrowing = !query && categories.length === 0 && supermarkets.length === 0;
   const emptyMessage =
-    timeframe === "upcoming" && noNarrowing ? t("offers.emptyUpcoming") : t("offers.empty");
+    timeframe === "upcoming" && noNarrowing
+      ? t("offers.emptyUpcoming")
+      : query
+        ? t("offers.emptySearch")
+        : t("offers.empty");
 
   // Infinite scroll: load the next page when the sentinel below the grid nears
   // the viewport. rootMargin pre-fetches ~a screen early so scrolling stays
@@ -561,6 +572,9 @@ export function OffersFeed() {
           {/* Results panel — holds the loading skeletons, error/empty states, the
               offer grid, and the infinite-scroll footer. */}
           <div className={`${styles.panel} ${styles.reveal}`}>
+            {/* Visually-hidden section heading so the outline goes h1 → h2 →
+                (card) h3 without skipping a level. */}
+            <h2 className="sr-only">{t("offers.results")}</h2>
             {isError ? (
               <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-8 text-center text-sm text-destructive">
                 {(error as Error).message}

@@ -190,20 +190,23 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
           </span>
         )}
 
-        {safeHref(offer.product.url) ? (
-          <a
-            href={safeHref(offer.product.url)!}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="line-clamp-2 min-h-8 text-xs leading-snug font-medium text-card-foreground hover:underline sm:min-h-10 sm:text-sm"
-          >
-            {productName}
-          </a>
-        ) : (
-          <h3 className="line-clamp-2 min-h-8 text-xs leading-snug font-medium text-card-foreground sm:min-h-10 sm:text-sm">
-            {productName}
-          </h3>
-        )}
+        {/* Always a heading, so every product name is a landmark for AT (some
+            cards have a deep-link, some don't); the link, when present, wraps
+            inside the heading rather than replacing it. */}
+        <h3 className="line-clamp-2 min-h-8 text-xs leading-snug font-medium text-card-foreground sm:min-h-10 sm:text-sm">
+          {safeHref(offer.product.url) ? (
+            <a
+              href={safeHref(offer.product.url)!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+            >
+              {productName}
+            </a>
+          ) : (
+            productName
+          )}
+        </h3>
 
         <div className="mt-auto pt-1">
           <PriceTag sale={sale} original={original} lead={priceLead} />

@@ -26,8 +26,10 @@ const DICT = {
     "offers.upcomingPill": "{n} volgende week",
     "offers.loading": "Aanbiedingen laden…",
     "offers.empty": "Geen aanbiedingen in deze categorie.",
+    "offers.emptySearch": "Geen aanbiedingen gevonden voor deze zoekopdracht.",
     "offers.emptyUpcoming": "De aanbiedingen voor volgende week zijn nog niet bekend — kom later terug.",
     "offers.end": "Geen aanbiedingen meer",
+    "offers.results": "Resultaten",
     "timeframe.label": "Periode",
     "timeframe.current": "Deze week",
     "timeframe.upcoming": "Volgende week",
@@ -101,8 +103,10 @@ const DICT = {
     "offers.upcomingPill": "{n} next week",
     "offers.loading": "Loading deals…",
     "offers.empty": "No deals in this category.",
+    "offers.emptySearch": "No deals found for this search.",
     "offers.emptyUpcoming": "Next week's deals aren't published yet — check back later.",
     "offers.end": "No more offers",
+    "offers.results": "Results",
     "timeframe.label": "Timeframe",
     "timeframe.current": "This week",
     "timeframe.upcoming": "Next week",
@@ -230,6 +234,9 @@ export function translateOfferText(text: string | null, locale: Locale): string 
   // "per <unit> 2.99"
   m = lower.match(/^per\s+([a-z]+)\s*([\d.,]+)$/);
   if (m && UNIT_NL_EN[m[1]]) return `per ${UNIT_NL_EN[m[1]]} ${m[2]}`;
+
+  // "op=op" / "op = op" — very common on Dirk cards
+  if (/^op\s*=\s*op$/.test(lower)) return "While stocks last";
 
   // bare "gratis" / "bonus"
   if (lower === "gratis") return "free";

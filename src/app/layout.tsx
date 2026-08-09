@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { ClerkProvider } from "@clerk/nextjs";
+import { nlNL } from "@clerk/localizations";
 import { shadcn } from "@clerk/ui/themes";
 import { Providers } from "./providers";
 import { HeaderNav } from "@/components/header-nav";
@@ -67,7 +68,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             transparent page chrome. Kept just after the pre-paint theme script
             (which must stay first) but before all rendered content. */}
         <LogoMarqueeBackground />
-        <ClerkProvider appearance={{ theme: shadcn }}>
+        {/* App default language is Dutch, so the Clerk sign-in/up UI is
+            localized to NL to match (English strings otherwise). */}
+        <ClerkProvider localization={nlNL} appearance={{ theme: shadcn }}>
           <Providers>
             {/* Opaque background so the fixed logo backdrop doesn't show through
                 the top bar — the logos stay in the gutters below it. */}
