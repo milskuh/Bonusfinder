@@ -7,7 +7,7 @@ import { shadcn } from "@clerk/ui/themes";
 import { Providers } from "./providers";
 import { HeaderNav } from "@/components/header-nav";
 import { LogoMarqueeBackground } from "@/components/logo-marquee-background";
-import { APP_NAME, APP_DESCRIPTION, SITE_URL } from "@/lib/config";
+import { APP_NAME, APP_TITLE_DEFAULT, APP_DESCRIPTION, SITE_URL } from "@/lib/config";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   alternates: { canonical: "/" },
   title: {
-    default: APP_NAME,
+    default: APP_TITLE_DEFAULT,
     template: `%s · ${APP_NAME}`,
   },
   description: APP_DESCRIPTION,
