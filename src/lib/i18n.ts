@@ -87,6 +87,11 @@ const DICT = {
     "basket.noOffer": "Geen actieve aanbieding",
     "auth.login": "Inloggen",
     "auth.signup": "Registreren",
+    "consent.message": "We gebruiken analytische cookies (Google Analytics) om te zien hoe de site gebruikt wordt. Deze worden alleen geplaatst als je ze accepteert.",
+    "consent.accept": "Accepteren",
+    "consent.decline": "Weigeren",
+    "footer.cookieSettings": "Cookie-instellingen",
+    "footer.tagline": "Alle supermarktaanbiedingen op één plek.",
   },
   en: {
     "nav.favorites": "Favorites",
@@ -164,6 +169,11 @@ const DICT = {
     "basket.noOffer": "No active deal",
     "auth.login": "Log in",
     "auth.signup": "Sign up",
+    "consent.message": "We use analytics cookies (Google Analytics) to see how the site is used. They're only set if you accept them.",
+    "consent.accept": "Accept",
+    "consent.decline": "Decline",
+    "footer.cookieSettings": "Cookie settings",
+    "footer.tagline": "All supermarket deals in one place.",
   },
 } as const;
 

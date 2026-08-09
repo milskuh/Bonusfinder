@@ -6,6 +6,8 @@ import { nlNL } from "@clerk/localizations";
 import { shadcn } from "@clerk/ui/themes";
 import { Providers } from "./providers";
 import { HeaderNav } from "@/components/header-nav";
+import { SiteFooter } from "@/components/site-footer";
+import { CookieConsent } from "@/components/cookie-consent";
 import { LogoMarqueeBackground } from "@/components/logo-marquee-background";
 import { APP_NAME, APP_TITLE_DEFAULT, APP_DESCRIPTION, SITE_URL } from "@/lib/config";
 import "./globals.css";
@@ -113,6 +115,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <HeaderNav />
             </header>
             {children}
+            <SiteFooter />
+            {/* Cookie banner + consent-gated GA4 (loads only after opt-in).
+                Inside <Providers> so it can read the language context. */}
+            <CookieConsent />
           </Providers>
         </ClerkProvider>
       </body>
