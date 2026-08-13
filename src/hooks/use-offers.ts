@@ -78,7 +78,7 @@ async function fetchOffers(query: OffersQuery, page: number): Promise<OffersResp
   return res.json();
 }
 
-export function useOffers(query: OffersQuery = {}) {
+export function useOffers(query: OffersQuery = {}, options?: { enabled?: boolean }) {
   return useInfiniteQuery({
     // Key over all filters + sort (but NOT page): changing any filter yields a
     // new key, so the infinite query resets and refetches from page 1.
@@ -88,5 +88,8 @@ export function useOffers(query: OffersQuery = {}) {
     // More pages remain while the last fetched page is below the total count.
     getNextPageParam: (lastPage) =>
       lastPage.page < lastPage.pageCount ? lastPage.page + 1 : undefined,
+    // Lets a caller (e.g. the hero, which runs two mutually-exclusive query
+    // branches) keep the inactive branch from fetching. Defaults to on.
+    enabled: options?.enabled ?? true,
   });
 }

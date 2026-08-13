@@ -10,6 +10,7 @@ import { supermarketBrand } from "@/lib/supermarkets";
 import { useLang } from "@/components/language-provider";
 import type { TKey } from "@/lib/i18n";
 import { OfferCard } from "./offer-card";
+import { TopDealsHero } from "./top-deals-hero";
 import { SupermarketLogo } from "./supermarket-logo";
 import { Skeleton } from "@/components/ui/skeleton";
 import styles from "./offers-feed.module.css";
@@ -180,6 +181,11 @@ export function OffersFeed() {
   // "no results for this search" wording (not "category"); a plain category/store
   // filter miss keeps the generic message.
   const noNarrowing = !query && categories.length === 0 && supermarkets.length === 0;
+  // The Top-deals hero rides along while browsing: shown for this week whenever the
+  // user isn't running a text search (where a curated strip is noise). It reflects
+  // the active store/category filters (see TopDealsHero) and is independent of the
+  // grid's sort, so it stays put as filters and sort change rather than vanishing.
+  const showHero = timeframe === "current" && !query;
   const emptyMessage =
     timeframe === "upcoming" && noNarrowing
       ? t("offers.emptyUpcoming")
@@ -285,7 +291,7 @@ export function OffersFeed() {
       <button
         onClick={() => setSupermarkets([])}
         aria-pressed={supermarkets.length === 0}
-        className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium whitespace-nowrap transition ${
+        className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border px-3.5 py-2 text-sm font-medium whitespace-nowrap transition ${
           supermarkets.length === 0
             ? "border-foreground bg-foreground text-background"
             : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
@@ -311,7 +317,7 @@ export function OffersFeed() {
                   }
                 : undefined
             }
-            className={`inline-flex shrink-0 items-center gap-2 rounded-full border py-1.5 pr-3.5 pl-1 text-sm font-medium whitespace-nowrap transition ${
+            className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border py-1.5 pr-3.5 pl-1 text-sm font-medium whitespace-nowrap transition ${
               active
                 ? "shadow-sm"
                 : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
@@ -336,8 +342,8 @@ export function OffersFeed() {
           <h1 className={styles.headerTitle}>{t("offers.title")}</h1>
           <p className={styles.headerSubtitle}>{t("offers.subtitle")}</p>
         </div>
-        {/* Live count pill — reuses the real active-offer total. Hidden until the
-            first page resolves (total === null while loading). */}
+        {/* Live count — quiet muted text (green dot + tabular label), reuses the
+            real active-offer total; hidden until the first page resolves. */}
         {total !== null && (
           <span className={styles.countPill}>
             <span className={styles.countDot} aria-hidden />
@@ -345,6 +351,11 @@ export function OffersFeed() {
           </span>
         )}
       </header>
+
+      {/* Curated first impression: the biggest discounts for the current view.
+          Reflects the active store/category filters (so it doesn't vanish while
+          browsing) and collapses itself when there aren't enough real deals. */}
+      {showHero && <TopDealsHero supermarkets={supermarkets} categories={categories} />}
 
       <div className="flex flex-col gap-3 sm:gap-6 lg:flex-row lg:gap-8">
         {/* Store filter as a left sidebar panel (multi-select; none selected =
@@ -403,7 +414,7 @@ export function OffersFeed() {
                     key={tf.value}
                     onClick={() => setTimeframe(tf.value)}
                     aria-pressed={timeframe === tf.value}
-                    className={`rounded-full px-4 py-1.5 font-medium whitespace-nowrap transition ${
+                    className={`inline-flex min-h-10 items-center rounded-full px-4 py-1.5 font-medium whitespace-nowrap transition ${
                       timeframe === tf.value
                         ? "bg-background text-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground"
@@ -422,7 +433,7 @@ export function OffersFeed() {
                   onClick={() => setStoresOpen((o) => !o)}
                   aria-expanded={storesOpen}
                   aria-controls="store-filter-mobile"
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium text-muted-foreground transition hover:border-foreground/40 hover:text-foreground lg:hidden"
+                  className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium text-muted-foreground transition hover:border-foreground/40 hover:text-foreground lg:hidden"
                 >
                   {t("filter.stores")}
                   {supermarkets.length > 0 && (
@@ -534,7 +545,7 @@ export function OffersFeed() {
                 <button
                   onClick={() => setCategories([])}
                   aria-pressed={categories.length === 0}
-                  className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition ${
+                  className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border px-3.5 py-2 text-sm font-medium transition ${
                     categories.length === 0
                       ? "border-foreground bg-foreground text-background"
                       : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
@@ -549,7 +560,7 @@ export function OffersFeed() {
                       key={cat}
                       onClick={() => toggleCategory(cat)}
                       aria-pressed={active}
-                      className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition ${
+                      className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border px-3.5 py-2 text-sm font-medium transition ${
                         active
                           ? "border-foreground bg-foreground text-background"
                           : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"

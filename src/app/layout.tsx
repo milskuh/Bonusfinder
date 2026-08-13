@@ -1,6 +1,15 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
+
+// One professional workhorse, self-hosted by next/font at build (no runtime
+// request, so nothing for the CSP to block). Inter carries UI, body, headings and
+// price data (it has excellent tabular figures); hierarchy comes from weight,
+// size and tracking rather than a second decorative face — a cleaner, more
+// minimal register for this operational app. Wired into the Tailwind theme as
+// --font-sans (globals.css @theme).
+const fontSans = Inter({ subsets: ["latin"], variable: "--font-sans-src", display: "swap" });
 import { ClerkProvider } from "@clerk/nextjs";
 import { nlNL } from "@clerk/localizations";
 import { shadcn } from "@clerk/ui/themes";
@@ -62,8 +71,8 @@ const themeScript = `(function(){try{var s=localStorage.getItem('theme');var m=w
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="nl" suppressHydrationWarning>
-      <body className="min-h-screen bg-background text-foreground antialiased">
+    <html lang="nl" suppressHydrationWarning className={fontSans.variable}>
+      <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         {/* Ambient, faded supermarket-logo backdrop. Fixed at z-index -10 and
             decorative, so it renders behind everything and shows through the

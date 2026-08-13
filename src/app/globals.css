@@ -19,7 +19,10 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  /* Bumped from 0.556 (~4.5:1, right at the AA floor) to 0.5 so the 11px micro-
+     labels — price-per-unit and validity date on each offer card — clear AA with
+     margin. Dark-mode muted (below) already has ample contrast, so it's unchanged. */
+  --muted-foreground: oklch(0.5 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -86,6 +89,13 @@
   --color-brand-light: #2fb574;
   --color-ink: #14201a;
   --color-surface: #f9f9f7;
+
+  /* Type (Inter, loaded self-hosted in layout.tsx via next/font). One family
+     carries everything — utility font-sans, and the body default — with the
+     system stack as fallback so text never goes invisible if the face fails.
+     Heading hierarchy is weight/size/tracking, not a second decorative face. */
+  --font-sans: var(--font-sans-src), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
 }
 
 @layer base {

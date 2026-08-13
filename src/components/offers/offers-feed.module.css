@@ -71,10 +71,11 @@
 }
 
 .headerTitle {
-  font-size: 26px;
+  font-family: var(--font-sans);
+  font-size: 25px;
   font-weight: 600;
   line-height: 1.15;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.021em;
   color: var(--header-title);
 }
 

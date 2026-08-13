@@ -158,21 +158,38 @@ async function getOffersFromDb(filters: OfferFilters) {
   // Beste deal = laagste pricePerUnit onder alle offers van dat product BINNEN
   // hetzelfde tijdvenster (dus niet beperkt tot de huidige pagina, en niet
   // vergeleken over 'deze week' vs 'volgende week' heen).
-  const productIds = [...new Set(offers.map((o) => o.productId))];
-  const mins = await db.offer.groupBy({
-    by: ["productId"],
-    where: { productId: { in: productIds }, ...timeframeWhere(filters.timeframe, now) },
-    _min: { pricePerUnit: true },
-  });
-  const bestByProduct = new Map(mins.map((m) => [m.productId, m._min.pricePerUnit]));
+  // "Beste deal" marks the few biggest discounts in each category this week, so
+  // the badge stays scarce and meaningful. The previous rule (cheapest per-unit
+  // price for a product) sat on nearly every card, because almost every product
+  // has a single weekly offer and is therefore trivially the cheapest offer of
+  // itself. Instead we rank every timeframe offer by discount within its category
+  // and take the top few — computed over ALL offers, not the filtered page, so the
+  // badge means the same under any active filter. Ranking by (discount desc, id)
+  // with a hard rn<=K cap bounds it to at most K per category even when many
+  // offers share the same discount value.
+  const BEST_DEALS_PER_CATEGORY = 3;
+  const tf =
+    filters.timeframe === "upcoming"
+      ? Prisma.sql`o."validFrom" > ${now}`
+      : Prisma.sql`o."validFrom" <= ${now} AND o."validUntil" >= ${now}`;
+  const topRows = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id FROM (
+      SELECT o."id" AS id,
+        ROW_NUMBER() OVER (
+          PARTITION BY p."category" ORDER BY o."discountPercent" DESC, o."id"
+        ) AS rn
+      FROM "Offer" o
+      JOIN "Product" p ON p."id" = o."productId"
+      WHERE ${tf} AND o."discountPercent" IS NOT NULL
+    ) ranked
+    WHERE ranked.rn <= ${BEST_DEALS_PER_CATEGORY}
+  `);
+  const bestDealIds = new Set(topRows.map((r) => r.id));
 
-  const items = offers.map((o) => {
-    const best = bestByProduct.get(o.productId);
-    return {
-      ...o,
-      isBestDeal: o.pricePerUnit != null && best != null && o.pricePerUnit.equals(best),
-    };
-  });
+  const items = offers.map((o) => ({
+    ...o,
+    isBestDeal: bestDealIds.has(o.id),
+  }));
 
   return {
     items,

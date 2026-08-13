@@ -85,3 +85,68 @@ export function sortCategoriesByLabel(locale: Locale): Category[] {
  * the active language.
  */
 export const CATEGORY_ORDER: Category[] = sortCategoriesByLabel("nl");
+
+/**
+ * The 22 categories bundled into a handful of shopper-facing groups, so the
+ * filter bar shows ~4 group choices (within working-memory limits) and reveals
+ * the fine-grained chips only when a group is opened. `labelKey` resolves through
+ * the i18n dictionary (catgroup.*). Every Category appears in exactly one group;
+ * keep this exhaustive if the enum grows.
+ */
+export type CategoryGroup = { key: string; labelKey: string; categories: Category[] };
+
+export const CATEGORY_GROUPS: CategoryGroup[] = [
+  {
+    key: "fresh",
+    labelKey: "catgroup.fresh",
+    categories: [
+      Category.GROENTE,
+      Category.FRUIT,
+      Category.VLEES,
+      Category.VIS,
+      Category.VEGETARISCH,
+      Category.ZUIVEL,
+      Category.EIEREN,
+      Category.KAAS,
+      Category.BROOD_BANKET,
+      Category.DIEPVRIES,
+    ],
+  },
+  {
+    key: "pantry",
+    labelKey: "catgroup.pantry",
+    categories: [
+      Category.PASTA_RIJST,
+      Category.ONTBIJT,
+      Category.KOFFIE,
+      Category.SNACKS_SNOEP,
+      Category.HOUDBAAR,
+    ],
+  },
+  {
+    key: "drinks",
+    labelKey: "catgroup.drinks",
+    categories: [Category.DRANKEN, Category.SODA, Category.ALCOHOL],
+  },
+  {
+    key: "nonfood",
+    labelKey: "catgroup.nonfood",
+    categories: [
+      Category.DROGISTERIJ,
+      Category.HUISHOUDEN,
+      Category.BABY_KIND,
+      Category.HUISDIER,
+      Category.OVERIG,
+    ],
+  },
+];
+
+/**
+ * The Top-deals hero draws from just two worlds — fresh and drinks — and mixes
+ * the biggest discounts from each. Kept as two separate sets (rather than one
+ * union) so the hero can interleave them and guarantee both are represented.
+ * Alcohol is deliberately excluded from the drinks set so the hero never opens on
+ * booze; add Category.ALCOHOL here to include it.
+ */
+export const HERO_FRESH: Category[] = CATEGORY_GROUPS[0].categories;
+export const HERO_DRINKS: Category[] = [Category.DRANKEN, Category.SODA];

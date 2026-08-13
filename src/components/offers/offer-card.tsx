@@ -34,6 +34,21 @@ function splitEuro(value: number): { whole: string; cents: string } {
 }
 
 /**
+ * Discount badges are colour-tiered by magnitude so a big markdown pops harder
+ * than a small one. Higher discount = brighter, more saturated red; small ones
+ * recede in deep red. The top tier adds a light-red halo for extra punch. White
+ * badge text stays ≥4.5:1 on every tier (red-600 through red-900 all clear it).
+ * Breakpoints: <10 / 10–25 / 25–50 / 50–60 / ≥60 %.
+ */
+function discountBadgeBg(pct: number): string {
+  if (pct >= 60) return "bg-red-600 ring-2 ring-red-400";
+  if (pct >= 50) return "bg-red-600";
+  if (pct >= 25) return "bg-red-700";
+  if (pct >= 10) return "bg-red-800";
+  return "bg-red-900";
+}
+
+/**
  * Product photo filling the square image panel (absolute inset), alongside the
  * card's overlays. object-contain so nothing crops; a skeleton while it loads
  * and a neutral icon when the image is missing or the URL is dead — so a null or
@@ -43,10 +58,12 @@ function ProductImage({
   src,
   alt,
   emptyLabel,
+  compact = false,
 }: {
   src: string | null;
   alt: string;
   emptyLabel: string;
+  compact?: boolean;
 }) {
   const [status, setStatus] = useState<"loading" | "loaded" | "error">(
     src ? "loading" : "error",
@@ -66,9 +83,9 @@ function ProductImage({
           decoding="async"
           onLoad={() => setStatus("loaded")}
           onError={() => setStatus("error")}
-          className={`absolute inset-0 h-full w-full object-contain p-3 transition-[transform,opacity] duration-500 ease-out group-hover:scale-105 sm:p-6 ${
-            status === "loaded" ? "opacity-100" : "opacity-0"
-          }`}
+          className={`absolute inset-0 h-full w-full object-contain transition-[transform,opacity] duration-500 ease-out group-hover:scale-105 ${
+            compact ? "p-2" : "p-3 sm:p-6"
+          } ${status === "loaded" ? "opacity-100" : "opacity-0"}`}
         />
       )}
       {status === "loading" && <Skeleton className="absolute inset-0 h-full w-full" />}
@@ -76,7 +93,7 @@ function ProductImage({
         <div
           role="img"
           aria-label={emptyLabel}
-          className="absolute inset-0 grid place-items-center text-neutral-300"
+          className="absolute inset-0 grid place-items-center text-neutral-400"
         >
           <ImageOff className="h-10 w-10" aria-hidden />
         </div>
@@ -123,7 +140,20 @@ function PriceTag({
   );
 }
 
-export function OfferCard({ offer }: { offer: OfferListItem }) {
+export function OfferCard({
+  offer,
+  // The Top-deals hero is already framed as "the biggest deals", so it suppresses
+  // the per-card "Beste deal" star to avoid repeating the same signal on every card.
+  hideBestBadge = false,
+  // Compact form for the horizontal hero strip: a short (3:2) image plate instead
+  // of the tall square, so the strip takes far less vertical space and the main
+  // deal grid rises toward the fold.
+  compact = false,
+}: {
+  offer: OfferListItem;
+  hideBestBadge?: boolean;
+  compact?: boolean;
+}) {
   const { t, locale, formatDate, offerText } = useLang();
 
   const sale = offer.salePrice != null ? Number(offer.salePrice) : null;
@@ -150,11 +180,20 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
 
   return (
     <div className="group relative flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-border transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl">
-      <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-neutral-50 to-neutral-100 sm:aspect-square">
+      {/* Product photos always sit on a light "lightbox" plate so cut-out and
+          white-background images read consistently. In dark mode the plate is
+          dimmed to a mid neutral (not near-white) so it's a deliberate photo
+          surface rather than a glowing rectangle inside the dark card. */}
+      <div
+        className={`relative overflow-hidden bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-200 dark:to-neutral-300 ${
+          compact ? "aspect-[3/2]" : "aspect-[4/3] sm:aspect-square"
+        }`}
+      >
         <ProductImage
           src={offer.product.imageUrl}
           alt={productName}
           emptyLabel={t("card.noImage")}
+          compact={compact}
         />
 
         <div className="absolute top-2 left-2 sm:top-3 sm:left-3">
@@ -167,7 +206,11 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
 
         <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3">
           {discount > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-1.5 py-1 text-[10px] font-bold tabular-nums text-white shadow-md sm:px-2.5 sm:py-1.5 sm:text-sm">
+            <span
+              className={`inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-bold tabular-nums text-white shadow-md sm:px-2.5 sm:py-1.5 sm:text-sm ${discountBadgeBg(
+                discount,
+              )}`}
+            >
               <TrendingDown className="size-3 sm:size-3.5" strokeWidth={2.5} aria-hidden />
               {`-${discount}%`}
             </span>
@@ -182,8 +225,12 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-1 p-2 sm:gap-2 sm:p-3">
-        {offer.isBestDeal && (
+      <div
+        className={`flex flex-1 flex-col gap-1 ${
+          compact ? "p-2" : "p-2 sm:gap-2 sm:p-3"
+        }`}
+      >
+        {offer.isBestDeal && !hideBestBadge && (
           <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 sm:px-2 sm:text-xs">
             <Star className="size-3 fill-amber-500 text-amber-500" aria-hidden />
             {t("card.bestDeal")}
@@ -193,7 +240,11 @@ export function OfferCard({ offer }: { offer: OfferListItem }) {
         {/* Always a heading, so every product name is a landmark for AT (some
             cards have a deep-link, some don't); the link, when present, wraps
             inside the heading rather than replacing it. */}
-        <h3 className="line-clamp-2 min-h-8 text-xs leading-snug font-medium text-card-foreground sm:min-h-10 sm:text-sm">
+        <h3
+          className={`line-clamp-2 min-h-8 text-xs leading-snug font-medium text-card-foreground ${
+            compact ? "" : "sm:min-h-10 sm:text-sm"
+          }`}
+        >
           {safeHref(offer.product.url) ? (
             <a
               href={safeHref(offer.product.url)!}
