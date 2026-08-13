@@ -44,6 +44,17 @@ enum Category {
   OVERIG // "overig" — catch-all for products no keyword or section matches
 }
 
+/// How a Product.category value was decided. Drives the audit + the correction
+/// loop: a stray tagged `source` needs a section-map/override fix, one tagged
+/// `rule` a keyword fix, `llm` is a low-confidence backstop guess to review, and
+/// `manual` is a human pin that must be left alone.
+enum CategorySource {
+  source // the supermarket's own section/aisle label (Tier-0 source-trust)
+  rule // the keyword rules in categorize.ts — the default for a computed category
+  llm // the cached LLM backstop (db:categorize); see categoryConfidence
+  manual // a human pin via CategoryOverride (wins over everything)
+}
+
 model Supermarket {
   id      String  @id @default(cuid())
   slug    String  @unique // "ah", "jumbo", "lidl", ...
@@ -61,6 +72,11 @@ model Product {
   brand         String?
   imageUrl      String?
   category      Category
+  // How `category` was decided (provenance), and the LLM backstop's confidence
+  // (0–1) when the category came from `llm` — null for rule/source/manual. See
+  // src/scrapers/persist.ts for the precedence that sets these.
+  categorySource     CategorySource @default(rule)
+  categoryConfidence Float?
   subcategory   String?
   contentAmount Decimal?  @db.Decimal(10, 3) // e.g. 1.500
   contentUnit   String? // e.g. "l", "kg", "g", "stuk"
@@ -177,4 +193,20 @@ model BasketItem {
 
   @@unique([userId, productId]) // -> compound key userId_productId (used in basket route)
   @@index([productId])
+}
+
+/// A pinned category for a product, keyed by its cross-store productMatchKey
+/// (src/scrapers/product-match.ts). persist.ts applies this OVER any computed
+/// category on every scrape, so a manual correction is durable — it can't be
+/// clobbered when the product reappears in a new ad. This is the escape hatch for
+/// the long tail the keyword rules can't cleanly reach; prefer fixing a rule (and
+/// adding a fixture) when a clean rule fix exists, and pin an override only when it
+/// doesn't. Not a relation: the key is a value, so an override can be created ahead
+/// of the product and survives a product being re-created.
+model CategoryOverride {
+  productMatchKey String   @id // the key from productMatchKey(); the join to a Product
+  category        Category
+  note            String? // why this pin exists, for the next reader
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

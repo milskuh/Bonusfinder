@@ -37,6 +37,8 @@ yarn-error.log*
 # local-only working notes / security review output (keep out of git)
 SECURITY_FINDINGS.md
 BASKET_TODO.md
+# categorisation rework notes incl. the §5b/§6 follow-ups (documented, not shipped)
+CATEGORIZATION_FIX.md
 
 # load test scripts + findings (local-only, never ship)
 /loadtest/

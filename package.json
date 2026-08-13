@@ -15,6 +15,7 @@
     "db:seed": "prisma db seed",
     "db:scrape": "tsx src/scrapers/run.ts",
     "db:recategorize": "tsx src/scrapers/recategorize.ts",
+    "db:categories:audit": "tsx src/scrapers/categories-audit.ts",
     "db:purge-store": "tsx src/scrapers/purge-store.ts",
     "db:translate": "tsx src/scrapers/translate-run.ts",
     "db:reset": "prisma migrate reset",

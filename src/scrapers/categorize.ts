@@ -1,340 +1,409 @@
 // src/scrapers/categorize.ts
-// Maps a scraped product (name + optional subcategory/brand text) onto our
-// `Category` enum using Dutch keyword matching. Shared by every scraper so the
-// taxonomy stays consistent across supermarkets.
+// Maps a scraped product (name + optional brand/section hints) onto our
+// `Category` enum. Shared by every scraper so the taxonomy stays consistent
+// across supermarkets.
 //
-// Rules are evaluated top-to-bottom; the FIRST category whose keywords match
-// wins, so order encodes priority. This matters for overlaps — e.g. "kipworst"
-// hits VLEES before anything else, and SODA is checked before the broader
-// DRANKEN so "cola" doesn't get swallowed by generic "drinken".
+// The classifier is a small TIERED pipeline (highest-trust signal first):
 //
-// A keyword may carry a leading sentinel to change how it matches (see
-// keywordHit): "=kw" = whole word only, "*kw" = substring anywhere. A bare
-// keyword matches at a word START (the Dutch-compound-friendly default).
+//   Tier 0  source-trust   — when the caller passes the source's own section
+//                            label (e.g. Gall = a liquor store, an AH "Drogisterij"
+//                            section), trust it. A section a human filed the deal
+//                            under beats any keyword guess.
+//   Tier 1  non-food gate  — route general merchandise / personal care (frying
+//                            pans, sunscreen, wipes) to their non-food bucket and
+//                            short-circuit BEFORE the food rules, so a food stem
+//                            buried in a product name ("koek" in "koekenpan") can't
+//                            claim them.
+//   Tier 2  food rules     — the ordered Dutch keyword rules. First match wins, so
+//                            order encodes priority (VEGETARISCH before the animal
+//                            buckets; ALCOHOL before SODA; …).
+//   fallback OVERIG        — the catch-all when nothing matches.
+//
+// Matching is boundary-aware (see match.ts). Each keyword is a `Pattern`:
+//   word("ui")            → whole token only ("rode ui", not "uitsmijter")
+//   prefix("kip")         → Dutch-compound-friendly ("kip" → "kipfilet")
+//   prefix("koek",[...])  → prefix minus known exceptions ("koek" but not "koekenpan")
+//   phrase("gin tonic")   → multi-word / hyphenated substring on the whole name
+//
+// Rule of thumb: a bare `prefix` is only for genuine food stems that commonly form
+// compounds (kip, rund, aardappel, appel…). Anything short and collision-prone
+// (vis, ijs, ham, koek, water) is `word` or `prefix` + `except`.
 import { Category } from "@prisma/client";
+import { normalizeName, tokenize, patternMatches, word, prefix, phrase, type Pattern } from "./match";
 
-/** Ordered rules: the first with a keyword hit decides the category. */
-const RULES: ReadonlyArray<{ category: Category; keywords: readonly string[] }> = [
-  // --- Vegetarian / vegan FIRST. These products deliberately imitate meat and
-  //     fish ("vegetarische kipstukjes", "vegan burger", plant "tonijn"), so
-  //     their names contain VLEES/VIS/GROENTE keywords. Checking VEGETARISCH ahead
-  //     of all of those routes them here instead of into the animal buckets.
-  //     Because it runs first the keyword list is deliberately TIGHT — only genuine
-  //     veg/vegan signals, so it can't swallow ordinary produce or dairy.
-  //     Deliberately EXCLUDED: bare "plantaardig(e)" (too broad — would pull
-  //     plant-milk/-butter out of ZUIVEL/DRANKEN) and "valess" (dairy-based, rare).
+type Rule = { category: Category; patterns: readonly Pattern[] };
+
+// --- Tier 2: ordered food (and general) keyword rules -----------------------
+// First rule with a matching pattern decides the category, so order is priority.
+const RULES: readonly Rule[] = [
+  // Vegetarian / vegan FIRST: these deliberately imitate meat/fish ("vegetarische
+  // kipstukjes", plant "tonijn"), so their names carry VLEES/VIS/GROENTE words.
+  // Running first (with a deliberately TIGHT list) routes them here, not into the
+  // animal buckets. Excluded on purpose: bare "plantaardig" (too broad).
   {
     category: Category.VEGETARISCH,
-    keywords: [
-      // "vegetarisch" also covers "vegetarische" (word-start match); "vegan"
-      // covers "veganistisch". "vleesvervang" covers vleesvervanger(s).
-      "vegetarisch", "vegan", "veggie", "vleesvervang",
-      "tofu", "tempeh", "seitan", "quorn", "falafel",
-      // Known NL substitute brands whose product names carry no veg/vegan word.
-      // ("vegetarische slager" is already caught by "vegetarisch".)
-      "vivera", "garden gourmet", "beyond", "goodbite", "schouten",
+    patterns: [
+      prefix("vegetarisch"), prefix("vegan"), prefix("veggie"), prefix("vleesvervang"),
+      prefix("tofu"), prefix("tempeh"), prefix("seitan"), prefix("quorn"), prefix("falafel"),
+      // NL substitute brands whose names carry no veg/vegan word.
+      prefix("vivera"), phrase("garden gourmet"), prefix("beyond"), prefix("goodbite"), prefix("schouten"),
     ],
   },
-  // --- Fish before meat, so "vissticks" / "tonijn" never fall into VLEES. ---
+  // Fish before meat, so "vissticks"/"tonijn" never fall into VLEES.
   {
     category: Category.VIS,
-    keywords: [
-      "vis", "zalm", "tonijn", "haring", "makreel", "kabeljauw", "pangasius",
-      "garnaal", "garnalen", "mossel", "scampi", "kibbeling", "lekkerbek",
-      "sushi", "surimi", "paling", "forel", "schol", "pilchard", "ansjovis",
-      "zeevruchten", "vissticks", "krab",
+    patterns: [
+      // "vis" is collision-prone ("Vision", "visite") → prefix minus those.
+      prefix("vis", ["vision", "visie", "visite", "viscose", "visagie"]),
+      prefix("zalm"), prefix("tonijn"), prefix("haring"), prefix("makreel"), prefix("kabeljauw"),
+      prefix("pangasius"), prefix("garnaal"), prefix("garnalen"), prefix("mossel"), prefix("scampi"),
+      prefix("kibbeling"), prefix("lekkerbek"), prefix("sushi"), prefix("surimi"), prefix("paling"),
+      prefix("forel"), prefix("schol"), prefix("pilchard"), prefix("ansjovis"), prefix("zeevruchten"),
+      prefix("vissticks"), prefix("krab"),
     ],
   },
-  // --- Meat / poultry. ---
+  // Meat / poultry.
   {
     category: Category.VLEES,
-    keywords: [
-      // "*worst"/"*karbonade" match anywhere — the meat word is a SUFFIX in
-      // "grillworst"/"ossenworst"/"ribkarbonade", which a word-start rule misses.
-      // ("*ham" would be unsafe — it hits "champignon" — so beenham/achterham are
-      // listed explicitly and bare "ham" stays word-start.)
-      "vlees", "kip", "kipfilet", "gehakt", "*worst", "rundvlees", "varkens",
-      "varkensvlees", "biefstuk", "schnitzel", "hamburger", "speklap", "spek",
-      "shoarma", "kalkoen", "saucijs", "saucijzen", "slavink", "gehaktbal",
-      "spareribs", "bacon", "ham", "beenham", "achterham", "salami", "cordon bleu",
-      "runder", "lamsvlees", "drumstick", "kipdij", "kippenpoot",
-      "*karbonade", "buikspek", "chipolata", "kabanos", "chorizo", "paté",
-      "hotdog", "pulled pork", "corned beef",
+    patterns: [
+      // "*worst"/"*karbonade" are SUFFIX compounds ("grillworst", "ribkarbonade")
+      // → phrase (substring). "ham" is collision-prone → prefix minus "hamkas"
+      // (the Hamka's snack) and "hamster" (a pet); "hamburger" still matches VLEES.
+      prefix("vlees"), prefix("kip"), prefix("kipfilet"), prefix("gehakt"), phrase("worst"),
+      prefix("rundvlees"), prefix("varkens"), prefix("varkensvlees"), prefix("biefstuk"),
+      prefix("schnitzel"), prefix("hamburger"), prefix("speklap"), prefix("spek"), prefix("shoarma"),
+      prefix("kalkoen"), prefix("saucijs"), prefix("saucijzen"), prefix("slavink"), prefix("gehaktbal"),
+      prefix("spareribs"), prefix("bacon"), prefix("ham", ["hamkas", "hamster"]), prefix("beenham"),
+      prefix("achterham"), prefix("salami"), phrase("cordon bleu"), prefix("runder"), prefix("lamsvlees"),
+      prefix("drumstick"), prefix("kipdij"), prefix("kippenpoot"), phrase("karbonade"), prefix("buikspek"),
+      prefix("chipolata"), prefix("kabanos"), prefix("chorizo"), word("pate"), prefix("hotdog"),
+      phrase("pulled pork"), phrase("corned beef"),
     ],
   },
-  // --- Soda / soft drinks, checked before ALCOHOL / the broader DRANKEN. ---
-  {
-    category: Category.SODA,
-    keywords: [
-      "cola", "coca-cola", "pepsi", "fanta", "sprite", "7up", "seven up",
-      "frisdrank", "sinas", "cassis", "tonic", "bitter lemon", "ginger ale",
-      "energydrink", "energy drink", "red bull", "monster", "aa drink",
-      "dubbelfris", "royal club", "rivella", "sourcy", "spa fruit", "ice tea",
-      "icetea", "lipton", "fuze tea", "limonade", "ranja", "siroop",
-    ],
-  },
-  // --- Alcohol (beer, wine, spirits), before the non-alcoholic DRANKEN so
-  //     "wijn"/"bier"/"whisky" get their own bucket. Checked AFTER SODA so
-  //     "ginger ale" (soft drink) isn't caught by "gin". Non-alcoholic look-alikes
-  //     ("0.0" / "alcoholvrij") are handled per-source (see gall.ts) since a
-  //     keyword alone can't tell an alcohol-free variant apart. ---
+  // Alcohol (beer, wine, spirits) BEFORE the soft drinks, so a mixer named
+  // "Gin Tonic" / "Bombay Sapphire & Tonic" / "Hard Lemonade" resolves to ALCOHOL
+  // even though it also carries the SODA words "tonic"/"lemonade". "gin" is a whole
+  // word (never the prefix of "ginger ale"); a bare "tonic" with no alcohol
+  // co-signal stays SODA below. Non-alcoholic 0.0 look-alikes are handled per-source
+  // (see gall.ts / the Tier-0 source-trust rule).
   {
     category: Category.ALCOHOL,
-    keywords: [
-      // "*bier" matches "bier" ANYWHERE, so suffix compounds a word-start match
-      // would miss ("craftbier", "witbier", "speciaalbier", "bokbier") still land
-      // in ALCOHOL. Fish/meat/soda run first, so "bierworst" is already VLEES.
-      "*bier", "pils", "pilsener", "radler", "wijn", "rosé", "prosecco", "cava",
-      "champagne", "mousserend", "wodka", "vodka", "whisky", "whiskey", "bourbon",
-      "rum", "likeur", "gin", "jenever", "vieux", "cognac", "brandy", "vermout",
-      "vermouth", "tequila", "sherry", "port", "aperitief", "gedistilleerd",
+    patterns: [
+      // "*bier" is a suffix compound ("craftbier", "witbier", "bokbier") → phrase.
+      phrase("bier"), prefix("pils"), prefix("pilsener"), prefix("radler"), prefix("wijn"),
+      word("rose"), prefix("prosecco"), prefix("cava"), prefix("champagne"), prefix("mousserend"),
+      prefix("wodka"), prefix("vodka"), prefix("whisky"), prefix("whiskey"), prefix("bourbon"),
+      prefix("rum"), prefix("likeur"), word("gin"), prefix("jenever"), prefix("vieux"),
+      prefix("cognac"), prefix("brandy"), prefix("vermout"), prefix("vermouth"), prefix("tequila"),
+      prefix("sherry"), word("port"), prefix("aperitief"), prefix("gedistilleerd"),
+      // Spirit/mixer phrases + brands that carry a soft-drink word but are alcohol.
+      phrase("gin tonic"), phrase("hard lemonade"), phrase("hard seltzer"),
+      phrase("bombay sapphire"), prefix("stelz"), prefix("bacardi"), prefix("jameson"),
     ],
   },
-  // --- Coffee, ahead of the non-alcoholic DRANKEN/ONTBIJT block so it gets its
-  //     own bucket instead of the generic "dranken". Placed AFTER ALCOHOL on
-  //     purpose: a coffee *liqueur* ("koffielikeur") should stay ALCOHOL, so let
-  //     the ALCOHOL rule claim it first; only non-alcoholic coffee reaches here.
-  //     Word-start matching means a bare "koffie" catches koffiebonen, -pads,
-  //     -cups, -capsules and -melk, but compounds that start with something else
-  //     (oploskoffie, filterkoffie) must be listed explicitly.
-  //     Decision: "koffiemelk" (coffee creamer) lands in KOFFIE (via "koffie") —
-  //     it lives in the coffee aisle. Add a "koffiemelk" token to ZUIVEL above if
-  //     it should be dairy instead.
+  // Soda / soft drinks, after ALCOHOL (above) and before the broader DRANKEN.
+  {
+    category: Category.SODA,
+    patterns: [
+      prefix("cola"), phrase("coca-cola"), prefix("pepsi"), prefix("fanta"), prefix("sprite"),
+      prefix("7up"), phrase("seven up"), prefix("frisdrank"), prefix("sinas"), prefix("cassis"),
+      prefix("tonic"), phrase("bitter lemon"), phrase("ginger ale"), prefix("energydrink"),
+      phrase("energy drink"), phrase("red bull"), prefix("monster"), phrase("aa drink"),
+      prefix("dubbelfris"), phrase("royal club"), prefix("rivella"), prefix("sourcy"),
+      phrase("spa fruit"), phrase("ice tea"), prefix("icetea"), prefix("lipton"), phrase("fuze tea"),
+      prefix("limonade"), prefix("ranja"), prefix("siroop"),
+    ],
+  },
+  // Coffee, before the generic DRANKEN so it gets its own bucket. AFTER ALCOHOL so
+  // a coffee *liqueur* stays ALCOHOL. "koffie" (prefix) catches -bonen/-pads/-cups.
   {
     category: Category.KOFFIE,
-    keywords: [
-      "koffie", "oploskoffie", "filterkoffie", "snelfilter",
-      "espresso", "cappuccino", "lungo", "ristretto", "macchiato", "latte",
-      "senseo", "nespresso", "nescafe", "nescafé", "dolce gusto",
-      // Coffee-only brands, so a bare brand name (no "koffie" word) is still caught
-      // by NAME rather than relying on a section hint (see recategorize.ts). Kept
-      // to brands that sell nothing but coffee — no ambiguous tokens like "l'or"
-      // (would hit "l'oréal") or "australian" (wine/beef).
-      "segafredo", "barissimo", "kanis", "douwe egberts",
+    patterns: [
+      prefix("koffie"), prefix("oploskoffie"), prefix("filterkoffie"), prefix("snelfilter"),
+      prefix("espresso"), prefix("cappuccino"), prefix("lungo"), prefix("ristretto"),
+      prefix("macchiato"), prefix("latte"), prefix("senseo"), prefix("nespresso"), prefix("nescafe"),
+      phrase("dolce gusto"), prefix("segafredo"), prefix("barissimo"), prefix("kanis"),
+      phrase("douwe egberts"),
     ],
   },
-  // --- Other (non-alcoholic) drinks: juice, water, tea. (Coffee is handled by
-  //     the KOFFIE rule above, so its keywords are intentionally not repeated
-  //     here.) ---
+  // Other (non-alcoholic) drinks: juice, water, tea. "water" is a WHOLE WORD (kills
+  // "waterborstel"/"waterwipes"/"waterkoker"); "spa" a whole word (kills "spaghetti").
   {
     category: Category.DRANKEN,
-    keywords: [
-      "sap", "jus", "juice", "smoothie", "water", "spa", "bronwater",
-      "thee", "drank",
+    patterns: [
+      prefix("sap"), prefix("jus"), prefix("juice"), prefix("smoothie"), word("water"),
+      word("spa"), prefix("bronwater"), prefix("thee"), prefix("drank"),
     ],
   },
-  // --- Eggs before dairy, so "eieren" doesn't fall into ZUIVEL. ---
+  // Eggs before dairy, so "eieren" doesn't fall into ZUIVEL.
   {
     category: Category.EIEREN,
-    keywords: ["eieren", "ei", "eitje", "eitjes", "scharrelei", "scharreleieren"],
+    patterns: [prefix("eieren"), prefix("ei"), prefix("eitje"), prefix("eitjes"), prefix("scharrelei"), prefix("scharreleieren")],
   },
-  // --- Dairy (no eggs). ---
+  // Dairy (no eggs).
   {
     category: Category.ZUIVEL,
-    keywords: [
-      "melk", "yoghurt", "yoghurtdrink", "kwark", "vla", "room", "slagroom",
-      "boter", "roomboter", "margarine", "karnemelk",
-      "chocomel", "fristi", "optimel", "danio", "kefir", "toetje", "pudding",
+    patterns: [
+      prefix("melk"), prefix("yoghurt"), prefix("yoghurtdrink"), prefix("kwark"), prefix("vla"),
+      prefix("room"), prefix("slagroom"), prefix("boter"), prefix("roomboter"), prefix("margarine"),
+      prefix("karnemelk"), prefix("chocomel"), prefix("fristi"), prefix("optimel"), prefix("danio"),
+      prefix("kefir"), prefix("toetje"), prefix("pudding"),
     ],
   },
   {
     category: Category.KAAS,
-    keywords: [
-      // No bare "gouda": the town/possessive shows up in NON-cheese brands (the
-      // sauce line "Gouda's Glorie"), while real Gouda cheese is named "Goudse …"
-      // and always carries "kaas"/"belegen". Adding "goudse" is unsafe too — it
-      // would swallow "Goudse stroopwafels" (a snack), so we rely on kaas/belegen.
-      "kaas", "kaasplak", "mozzarella", "brie", "camembert", "geraspte",
-      "parmezaan", "feta", "roomkaas", "smeerkaas", "milner", "belegen", "strooikaas",
+    patterns: [
+      // No bare "gouda" (the "Gouda's Glorie" sauce line); real Gouda carries
+      // "kaas"/"belegen". No "goudse" either (it would swallow "Goudse stroopwafels").
+      prefix("kaas"), prefix("kaasplak"), prefix("mozzarella"), prefix("brie"), prefix("camembert"),
+      prefix("geraspte"), prefix("parmezaan"), prefix("feta"), prefix("roomkaas"), prefix("smeerkaas"),
+      prefix("milner"), prefix("belegen"), prefix("strooikaas"),
     ],
   },
   {
     category: Category.BROOD_BANKET,
-    keywords: [
-      "brood", "stokbrood", "bolletjes", "croissant", "gebak", "taart", "cake",
-      "koekje", "banket", "bakkerij", "pistolet", "beschuit", "crackers",
-      "muffin", "donut", "appeltaart", "vlaai", "oliebol",
+    patterns: [
+      // "*brood" is a suffix compound ("volkorenbrood", "tijgerbrood", "casinobrood")
+      // → phrase, so the very common bread compounds don't fall through to OVERIG.
+      phrase("brood"), prefix("bolletjes"), prefix("croissant"), prefix("gebak"),
+      prefix("taart"), prefix("cake"), prefix("koekje"), prefix("banket"), prefix("bakkerij"),
+      prefix("pistolet"), prefix("beschuit"), prefix("crackers"), prefix("muffin"), prefix("donut"),
+      prefix("appeltaart"), prefix("vlaai"), prefix("oliebol"),
     ],
   },
-  // --- Fruit before vegetables (both split out of the old GROENTE_FRUIT). ---
+  // Fruit before vegetables.
   {
     category: Category.FRUIT,
-    keywords: [
-      "fruit", "appel", "banaan", "banane", "sinaasappel", "druiven", "druif",
-      "aardbei", "aardbeien", "mango", "peer", "peren", "citroen", "meloen",
-      "kiwi", "ananas", "perzik", "nectarine", "framboos", "frambozen", "bessen",
-      "blauwe bes", "braam", "bramen", "pruim", "abrikoos", "kersen", "mandarijn",
-      "clementine", "grapefruit", "avocado",
+    patterns: [
+      prefix("fruit"), prefix("appel"), prefix("banaan"), prefix("banane"), prefix("sinaasappel"),
+      prefix("druiven"), prefix("druif"), prefix("aardbei"), prefix("aardbeien"), prefix("mango"),
+      prefix("peer"), prefix("peren"), prefix("citroen"), prefix("meloen"), prefix("kiwi"),
+      prefix("ananas"), prefix("perzik"), prefix("nectarine"), prefix("framboos"), prefix("frambozen"),
+      prefix("bessen"), phrase("blauwe bes"), prefix("braam"), prefix("bramen"), prefix("pruim"),
+      prefix("abrikoos"), prefix("kersen"), prefix("mandarijn"), prefix("clementine"),
+      prefix("grapefruit"), prefix("avocado"),
     ],
   },
   {
     category: Category.GROENTE,
-    keywords: [
-      // "=ui" = whole word only: bare word-start "ui" wrongly hit "Uiltje" (a beer
-      // brand), "uitsmijter", "uier"… The plural "uien" keeps its word-start match.
-      "groente", "aardappel", "tomaat", "komkommer", "sla", "ijsbergsla",
-      "ijsberg", "kropsla", "salade", "paprika", "=ui", "uien", "wortel",
-      "broccoli", "champignon", "spinazie", "courgette", "bloemkool", "prei",
-      "boon", "bonen", "sperzieboon", "erwt", "andijvie", "witlof", "rucola",
-      "radijs", "asperge", "knoflook", "pompoen", "biet", "spruit", "spitskool",
-      "snackgroente", "snackgroenten", "rauwkost", "*peen", // "*peen": bospeen/waspeen/winterpeen
+    patterns: [
+      // "ui" (onion) is a WHOLE WORD: word-start wrongly hit "Uiltje"/"uitsmijter".
+      // "*peen" is a suffix (bospeen/waspeen/winterpeen) → phrase.
+      prefix("groente"), prefix("aardappel"), prefix("tomaat"), prefix("komkommer"), prefix("sla"),
+      prefix("ijsbergsla"), prefix("ijsberg"), prefix("kropsla"), prefix("salade"), prefix("paprika"),
+      word("ui"), prefix("uien"), prefix("wortel"), prefix("broccoli"), prefix("champignon"),
+      prefix("spinazie"), prefix("courgette"), prefix("bloemkool"), prefix("prei"), prefix("boon"),
+      prefix("bonen"), prefix("sperzieboon"), prefix("erwt"), prefix("andijvie"), prefix("witlof"),
+      prefix("rucola"), prefix("radijs"), prefix("asperge"), prefix("knoflook"), prefix("pompoen"),
+      prefix("biet"), prefix("spruit"), prefix("spitskool"), prefix("snackgroente"),
+      prefix("snackgroenten"), prefix("rauwkost"), phrase("peen"),
     ],
   },
   {
     category: Category.ONTBIJT,
-    keywords: [
-      "ontbijt", "muesli", "cornflakes", "cruesli", "hagelslag", "pindakaas",
-      "jam", "havermout", "brinta", "ontbijtkoek", "vlokken", "granola",
+    patterns: [
+      prefix("ontbijt"), prefix("muesli"), prefix("cornflakes"), prefix("cruesli"), prefix("hagelslag"),
+      prefix("pindakaas"), prefix("jam"), prefix("havermout"), prefix("brinta"), prefix("ontbijtkoek"),
+      prefix("vlokken"), prefix("granola"),
     ],
   },
   {
     category: Category.DIEPVRIES,
-    keywords: [
-      "diepvries", "pizza", "ijs", "roomijs", "magnum", "ben & jerry",
-      "frites", "friet", "diepvriespizza", "loempia",
+    patterns: [
+      prefix("diepvries"), prefix("pizza"), prefix("ijs", ["ijscrusher", "ijsmaker", "ijsmachine"]),
+      prefix("roomijs"), prefix("magnum"), phrase("ben & jerry"), prefix("frites"), prefix("friet"),
+      prefix("diepvriespizza"), prefix("loempia"),
     ],
   },
   {
     category: Category.SNACKS_SNOEP,
-    keywords: [
-      "chips", "zoutjes", "noten", "borrelnoot", "snoep", "chocolade", "chocola",
-      "reep", "koek", "biscuit", "drop", "winegum", "pinda", "popcorn", "toffee",
-      "m&m", "snickers", "haribo", "stroopwafel", "tuc", "cracker", "oreo",
+    patterns: [
+      // "koek" is collision-prone → prefix minus the "koekenpan" frying pan.
+      prefix("chips"), prefix("zoutjes"), prefix("noten"), prefix("borrelnoot"), prefix("snoep"),
+      prefix("chocolade"), prefix("chocola"), prefix("reep"), prefix("koek", ["koekenpan", "koekpan"]),
+      prefix("biscuit"), prefix("drop"), prefix("winegum"), prefix("pinda"), prefix("popcorn"),
+      prefix("toffee"), phrase("m&m"), prefix("snickers"), prefix("haribo"), prefix("stroopwafel"),
+      prefix("tuc"), prefix("cracker"), prefix("oreo"),
+      // Well-known crisp/snack brands whose names carry no generic snack word.
+      prefix("cheetos"), prefix("wokkels"), prefix("bugles"), prefix("hamka"), prefix("doritos"),
+      prefix("lays"), prefix("pringles"), prefix("nibbits"),
     ],
   },
   {
     category: Category.DROGISTERIJ,
-    keywords: [
-      "tandpasta", "shampoo", "douchegel", "deodorant", "zeep", "crème",
-      "bodylotion", "scheer", "tandenborstel", "maandverband", "tampon",
-      "verzorging", "vitamine", "paracetamol", "pleister", "mondwater", "dove",
+    patterns: [
+      prefix("tandpasta"), prefix("shampoo"), prefix("douchegel"), prefix("deodorant"), prefix("zeep"),
+      prefix("creme"), prefix("bodylotion"), prefix("scheer"), prefix("tandenborstel"),
+      prefix("maandverband"), prefix("tampon"), prefix("verzorging"), prefix("vitamine"),
+      prefix("paracetamol"), prefix("pleister"), prefix("mondwater"), prefix("dove"),
     ],
   },
   {
     category: Category.HUISHOUDEN,
-    keywords: [
-      "wasmiddel", "wasverzachter", "afwasmiddel", "vaatwas", "schoonmaak",
-      "allesreiniger", "toiletpapier", "keukenrol", "vuilniszak", "aluminiumfolie",
-      "wc-papier", "luchtverfrisser", "afwas", "glansspoel", "wasgel",
-      // Pest control ("insectenverdelger", "muggenstekker", "mierenlokdoos") —
-      // non-food; "insect" (word start) covers insecten/insectenspray/-verdelger.
-      "insect", "muggen", "mieren", "wespen", "ongedierte",
+    patterns: [
+      prefix("wasmiddel"), prefix("wasverzachter"), prefix("afwasmiddel"), prefix("vaatwas"),
+      prefix("schoonmaak"), prefix("allesreiniger"), prefix("toiletpapier"), prefix("keukenrol"),
+      prefix("vuilniszak"), prefix("aluminiumfolie"), phrase("wc-papier"), prefix("luchtverfrisser"),
+      prefix("afwas"), prefix("glansspoel"), prefix("wasgel"),
+      // Pest control (non-food): "insect" covers insecten/-spray/-verdelger.
+      prefix("insect"), prefix("muggen"), prefix("mieren"), prefix("wespen"), prefix("ongedierte"),
     ],
   },
   {
     category: Category.BABY_KIND,
-    keywords: [
-      "luier", "baby", "babyvoeding", "billendoekjes", "olvarit", "nutrilon",
-      "zwitsal", "pampers", "kinder", "flesvoeding",
+    patterns: [
+      prefix("luier"), prefix("baby"), prefix("babyvoeding"), prefix("billendoekjes"), prefix("olvarit"),
+      prefix("nutrilon"), prefix("zwitsal"), prefix("pampers"), prefix("kinder"), prefix("flesvoeding"),
     ],
   },
   {
     category: Category.HUISDIER,
-    keywords: [
-      "hondenvoer", "kattenvoer", "hond", "kat", "dierenvoer", "whiskas",
-      "felix", "pedigree", "kattenbak", "brokjes", "huisdier", "frolic",
+    patterns: [
+      prefix("hondenvoer"), prefix("kattenvoer"), prefix("hond"), prefix("kat"), prefix("dierenvoer"),
+      prefix("whiskas"), prefix("felix"), prefix("pedigree"), prefix("kattenbak"), prefix("brokjes"),
+      prefix("huisdier"), prefix("frolic"),
     ],
   },
-  // --- Pasta / rice / world cuisine, before the HOUDBAAR catch-all. ---
+  // Pasta / rice / world cuisine, before the HOUDBAAR catch-all.
   {
     category: Category.PASTA_RIJST,
-    keywords: [
-      "pasta", "spaghetti", "penne", "macaroni", "lasagne", "tagliatelle",
-      "fusilli", "rijst", "risotto", "noedels", "noodles", "mie", "bami", "nasi",
-      "couscous", "quinoa", "wereldkeuken", "wrap", "wraps", "tortilla", "taco",
+    patterns: [
+      prefix("pasta"), prefix("spaghetti"), prefix("penne"), prefix("macaroni"), prefix("lasagne"),
+      prefix("tagliatelle"), prefix("fusilli"), prefix("rijst"), prefix("risotto"), prefix("noedels"),
+      prefix("noodles"), prefix("mie"), prefix("bami"), prefix("nasi"), prefix("couscous"),
+      prefix("quinoa"), prefix("wereldkeuken"), prefix("wrap"), prefix("wraps"), prefix("tortilla"),
+      prefix("taco"),
     ],
   },
   {
     category: Category.HOUDBAAR,
-    keywords: [
-      // "*saus"/"*soep"/"*olie" match anywhere: these are classic Dutch suffix
-      // compounds ("barbecuesaus", "tomatensoep", "olijfolie") a word-start rule
-      // would miss, wrongly dropping obvious pantry items into OVERIG. Earlier rules
-      // still win first ("knoflooksaus" → GROENTE, "kippensoep" → VLEES), and the
-      // "oliebol" pastry is caught by BROOD_BANKET above before "*olie" sees it.
-      "*saus", "*soep", "conserven", "*olie", "azijn", "kruiden", "bouillon",
-      "meel", "suiker", "ketchup", "mayonaise", "curry", "blik", "pot",
+    patterns: [
+      // "*saus"/"*soep"/"*olie" are suffix compounds ("barbecuesaus", "tomatensoep",
+      // "olijfolie") → phrase. Earlier rules still win ("kippensoep" → VLEES); the
+      // "oliebol" pastry is caught by BROOD_BANKET before "olie" is seen.
+      phrase("saus"), phrase("soep"), prefix("conserven"), phrase("olie"), prefix("azijn"),
+      prefix("kruiden"), prefix("bouillon"), prefix("meel"), prefix("suiker"), prefix("ketchup"),
+      prefix("mayonaise"), prefix("curry"), prefix("blik"), prefix("pot"),
     ],
   },
 ];
 
-const normalize = (s: string) => s.toLowerCase();
+// --- Tier 1: non-food gate (runs BEFORE the food rules) ---------------------
+// General merchandise / personal care, matched with SPECIFIC compound tokens
+// (`koekenpan`, not bare `pan`) so a food name can't over-match. Every token here
+// is justified by a fixture row (categorize.fixtures.ts); add a token → run the
+// fixtures → if a control row breaks, the token is too broad.
+const NON_FOOD_RULES: readonly Rule[] = [
+  {
+    category: Category.BABY_KIND,
+    patterns: [word("waterwipes"), word("wipes"), word("billendoekjes"), word("luiers")],
+  },
+  {
+    category: Category.DROGISTERIJ,
+    patterns: [
+      word("zonbescherming"), word("zonnebrand"), word("zonnecreme"), word("aftersun"),
+      word("biodermal"), phrase("vision zonbescherming"),
+    ],
+  },
+  {
+    category: Category.HUISHOUDEN,
+    patterns: [
+      word("koekenpan"), word("steelpan"), word("borstel"), word("waterborstel"), word("spanband"),
+      word("crusher"), word("ijscrusher"), word("slushymaker"), word("telescopisch"),
+      word("telescopische"),
+    ],
+  },
+];
 
-const isWordChar = (c: string) => /[a-z0-9]/.test(c);
+// --- Tier 0: source-trust ----------------------------------------------------
+// Map a supermarket's own section/aisle label straight to a Category. A section a
+// human filed the deal under is a stronger signal than a keyword guess, so it runs
+// first when the caller threads it through. Keyed by the raw label as the source
+// spells it; extend per source.
+const SECTION_MAP: Record<string, Category> = {
+  // Non-food aisles (AH / DekaMarkt spellings) — the classes keywords miss most.
+  Drogisterij: Category.DROGISTERIJ,
+  Huishouden: Category.HUISHOUDEN,
+  "Baby en kind": Category.BABY_KIND,
+  "Baby & kind": Category.BABY_KIND,
+  Huisdier: Category.HUISDIER,
+};
 
 /**
- * Does `keyword` occur at the START of a word in `haystack`? This keeps Dutch
- * compound matching ("kip" → "kipfilet") while avoiding mid-word false hits
- * (the keyword "ei" must not match "klein", "ham" must not match "shampoo").
+ * Highest-trust tier: resolve from the source's own signal, or null to fall
+ * through to the keyword tiers.
+ *  - Gall & Gall is a liquor store: default everything to ALCOHOL unless the name
+ *    clearly says it's an alcohol-free variant (then let the food rules pick SODA).
+ *  - Any source may pass a `section` label we recognise (SECTION_MAP).
  */
-function matchesWordStart(haystack: string, keyword: string): boolean {
-  let i = haystack.indexOf(keyword);
-  while (i !== -1) {
-    if (i === 0 || !isWordChar(haystack[i - 1])) return true;
-    i = haystack.indexOf(keyword, i + 1);
+function sourceTrust(
+  nameNorm: string,
+  opts: { source?: string | null; section?: string | null },
+): Category | null {
+  const section = opts.section?.trim();
+  if (section && section in SECTION_MAP) return SECTION_MAP[section];
+
+  if (opts.source === "gall") {
+    const alcoholFree = /alcoholvrij|alcoholarm|\b0[.,]0\s*%?\b/.test(nameNorm);
+    if (!alcoholFree) return Category.ALCOHOL;
   }
-  return false;
+  return null;
 }
 
-/**
- * Does `keyword` occur as a WHOLE word (bounded on both sides) in `haystack`?
- * For short, prefix-greedy tokens where a word-start match over-reaches — "ui"
- * (onion) must match "rode ui" but not "Uiltje" / "uitsmijter" / "uier".
- */
-function matchesWholeWord(haystack: string, keyword: string): boolean {
-  let i = haystack.indexOf(keyword);
-  while (i !== -1) {
-    const leftOk = i === 0 || !isWordChar(haystack[i - 1]);
-    const end = i + keyword.length;
-    const rightOk = end >= haystack.length || !isWordChar(haystack[end]);
-    if (leftOk && rightOk) return true;
-    i = haystack.indexOf(keyword, i + 1);
-  }
-  return false;
-}
-
-/**
- * Match a keyword against `haystack`, honouring an optional leading sentinel:
- *   "=kw" → whole word only    (matchesWholeWord)
- *   "*kw" → substring anywhere  (plain includes — for suffix compounds)
- *   "kw"  → word start (default)
- */
-function keywordHit(haystack: string, keyword: string): boolean {
-  if (keyword[0] === "=") return matchesWholeWord(haystack, keyword.slice(1));
-  if (keyword[0] === "*") return haystack.includes(keyword.slice(1));
-  return matchesWordStart(haystack, keyword);
-}
-
-/** First rule with a keyword hit in `haystack`, or null when nothing matches. */
-function classify(haystack: string): Category | null {
-  for (const { category, keywords } of RULES) {
-    for (const kw of keywords) {
-      if (keywordHit(haystack, kw)) return category;
+/** First rule in `rules` with a matching pattern, or null. */
+function classify(tokens: readonly string[], nameNorm: string, rules: readonly Rule[]): Category | null {
+  for (const { category, patterns } of rules) {
+    for (const p of patterns) {
+      if (patternMatches(p, tokens, nameNorm)) return category;
     }
   }
   return null;
 }
 
+/** Run the non-food gate then the food rules over one text. */
+function classifyTiered(text: string): Category | null {
+  const nameNorm = normalizeName(text);
+  const tokens = tokenize(text);
+  return classify(tokens, nameNorm, NON_FOOD_RULES) ?? classify(tokens, nameNorm, RULES);
+}
+
 /**
- * Best-effort category for a scraped product. The product NAME is authoritative:
- * if it carries any category keyword we classify on it alone. Only when the name
- * is inconclusive do we fold in the source's hints (brand / pack size / section
- * label). This mirrors every scraper's documented "a name keyword wins; else the
- * section fallback" intent and stops a broad hint (a brand like "Uiltje", a
- * marketing subtitle mentioning "groente") from dragging a product into the wrong
- * bucket. Falls back to OVERIG ("other" — the catch-all for genuinely unmatched
- * products) when neither the name nor the hints match anything, rather than to
- * HOUDBAAR: HOUDBAAR is a real pantry category reached via its own keywords
- * ("saus", "olie", …). Both are "weak" results though — HOUDBAAR's keywords are
- * greedy ("suiker" hits "suikermais") — so the section-fallback scrapers let a
- * mapped section override either (see categoryFor in dirk.ts / dekamarkt.ts).
+ * Options a caller may thread through to the classifier. Everything is optional so
+ * existing callers — `categorize(name)` / `categorize(name, hints)` — keep working.
+ */
+export interface CategorizeOptions {
+  /** The scraper slug, e.g. "gall", enabling per-source trust rules. */
+  source?: string | null;
+  /** The source's own section/aisle label for this product, if it carries one. */
+  section?: string | null;
+}
+
+/**
+ * Best-effort category for a scraped product. Precedence:
+ *   source-trust (§Tier 0) → non-food gate + food rules on the NAME → the same on
+ *   name + hints → OVERIG.
+ *
+ * The product NAME is authoritative: if it carries any keyword we classify on it
+ * alone, so a broad hint (a brand like "Uiltje", a marketing subtitle mentioning
+ * "groente") can't drag a product into the wrong bucket. Only when the name is
+ * inconclusive do we fold in the source's hints (brand / pack size / section).
+ * Falls back to OVERIG (the catch-all) rather than HOUDBAAR, which is a real pantry
+ * category reached via its own keywords.
  */
 export function categorize(
   name: string,
   hints: (string | null | undefined)[] = [],
+  opts: CategorizeOptions = {},
 ): Category {
-  const byName = classify(normalize(name));
+  // Tier 0: the source's own signal wins when the caller provides it.
+  const bySource = sourceTrust(normalizeName(name), opts);
+  if (bySource != null) return bySource;
+
+  // Tiers 1–2 on the NAME alone (name-first).
+  const byName = classifyTiered(name);
   if (byName != null) return byName;
-  const withHints = classify(normalize([name, ...hints].filter(Boolean).join(" ")));
+
+  // Fall back to name + hints.
+  const withHints = classifyTiered([name, ...hints].filter(Boolean).join(" "));
   return withHints ?? Category.OVERIG;
 }

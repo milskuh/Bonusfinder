@@ -3,7 +3,7 @@
 // persistence layer. A scraper's only job is to turn a supermarket's public
 // offer listing into a list of `ScrapedOffer`s; `persist.ts` handles all
 // database writes so every source stays thin and uniform.
-import type { Category } from "@prisma/client";
+import type { Category, CategorySource } from "@prisma/client";
 
 /** One offer as scraped from a supermarket, before it touches the database. */
 export interface ScrapedOffer {
@@ -12,6 +12,12 @@ export interface ScrapedOffer {
   /** Brand if separable from the name, else null. */
   brand: string | null;
   category: Category;
+  /**
+   * How `category` was decided, for provenance. Omit for the ordinary keyword
+   * path — persist.ts records it as `rule`. A source-section-driven scraper may set
+   * `source`; `manual`/`llm` are applied by persist.ts / the backstop, not scrapers.
+   */
+  categorySource?: CategorySource;
   /** Supermarket's own sub-department label, e.g. "Vlees, kip, vis". */
   subcategory: string | null;
   imageUrl: string | null;

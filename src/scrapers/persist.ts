@@ -19,6 +19,7 @@
 //   * PriceHistory — a row is appended on first sighting or a price change, so the
 //                    price chart keeps a trail without piling up identical points
 //                    on every (e.g. daily) run.
+import { CategorySource } from "@prisma/client";
 import { db } from "../lib/db";
 import { buildOfferPlan, type OfferWrite } from "./offer-plan";
 import { productMatchKey } from "./product-match";
@@ -91,6 +92,15 @@ export async function persistOffers(
     ]),
   );
 
+  // Manual category pins (see CategoryOverride). Loaded once and applied over the
+  // scraper's computed category below, so a human correction survives every
+  // re-scrape instead of being overwritten when the product reappears.
+  const overrides = new Map(
+    (await db.categoryOverride.findMany({ select: { productMatchKey: true, category: true } })).map(
+      (o) => [o.productMatchKey, o.category] as const,
+    ),
+  );
+
   let created = 0;
   const resolved: { offer: ScrapedOffer; productId: string }[] = [];
   for (const offer of offers) {
@@ -100,13 +110,23 @@ export async function persistOffers(
       contentAmount: offer.contentAmount,
       contentUnit: offer.contentUnit,
     });
+    // Precedence: a manual pin wins over the scraper's computed category; else use
+    // what the scraper produced, recording how it was decided (`source` when the
+    // scraper set it, otherwise the keyword `rule` default).
+    const pinned = overrides.get(key);
+    const category = pinned ?? offer.category;
+    const categorySource = pinned
+      ? CategorySource.manual
+      : (offer.categorySource ?? CategorySource.rule);
+
     let productId = idByKey.get(key);
     if (!productId) {
       const product = await db.product.create({
         data: {
           name: offer.name,
           brand: offer.brand,
-          category: offer.category,
+          category,
+          categorySource,
           subcategory: offer.subcategory,
           imageUrl: safeHttpUrl(offer.imageUrl),
           url: safeHttpUrl(offer.deepLink),
@@ -118,11 +138,13 @@ export async function persistOffers(
       idByKey.set(key, productId);
       created++;
     } else {
-      // Keep category/image fresh — the source is the source of truth.
+      // Keep category/image fresh — the source is the source of truth (except a
+      // manual pin, applied above).
       await db.product.update({
         where: { id: productId },
         data: {
-          category: offer.category,
+          category,
+          categorySource,
           subcategory: offer.subcategory,
           // Validate when a value is supplied; leave the stored value untouched
           // when the source omitted it (undefined = "no change" in Prisma).
