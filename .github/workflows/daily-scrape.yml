@@ -42,7 +42,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Node 24 ships npm 11 — the same major that generates package-lock.json
+          # locally. On Node 20 (npm 10) `npm ci` fails EUSAGE because npm 10 and 11
+          # resolve the optional `utf-8-validate` dep tree differently (npm 11 prunes
+          # the nested 5.x installs npm 10 still expects). Also clears the Node-20
+          # runner deprecation warning.
+          node-version: "24"
           cache: npm
       - name: Install dependencies
         run: npm ci # postinstall runs `prisma generate`
