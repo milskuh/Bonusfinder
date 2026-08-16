@@ -43,6 +43,16 @@ const MIN_OFFERS: Record<string, number> = {};
 const DEFAULT_MIN_OFFERS = 1;
 const minOffersFor = (slug: string) => MIN_OFFERS[slug] ?? DEFAULT_MIN_OFFERS;
 
+// Best-effort stores: allowed to fail without failing the whole nightly run.
+// Gall's WAF returns 403 to datacenter IPs (works locally, blocks GitHub
+// Actions), so it can't be scraped reliably from CI. Its offers are alcohol-only
+// and multi-week, so brief staleness is harmless. When a best-effort store errors
+// or comes up short we report it and leave its live offers intact, but DO NOT set
+// a non-zero exit code — the run still goes green on the strict stores. Every
+// other store remains fatal-on-failure. Refresh Gall manually (`db:scrape gall`)
+// from a residential IP when needed.
+const BEST_EFFORT = new Set<string>(["gall"]);
+
 async function main() {
   const args = process.argv.slice(2);
   const dry = args.includes("--dry");
@@ -66,6 +76,7 @@ async function main() {
   // Collected for the end-of-run health summary and the process exit code.
   const threw: string[] = [];
   const staleStores: string[] = [];
+  const degraded: string[] = []; // best-effort stores that failed (non-fatal)
 
   for (const scraper of selected) {
     const started = Date.now();
@@ -84,8 +95,12 @@ async function main() {
           `  ✖ FRESHNESS: ${scraper.name} returned ${offers.length} offers (floor ${floor}). ` +
             `Skipping persist so live offers are left intact.`,
         );
-        staleStores.push(`${scraper.slug} (${offers.length})`);
-        process.exitCode = 1;
+        if (BEST_EFFORT.has(scraper.slug)) {
+          degraded.push(`${scraper.slug} (${offers.length})`);
+        } else {
+          staleStores.push(`${scraper.slug} (${offers.length})`);
+          process.exitCode = 1;
+        }
         continue;
       }
 
@@ -113,8 +128,12 @@ async function main() {
       );
     } catch (err) {
       console.error(`  ✖ ${scraper.name} failed:`, err);
-      threw.push(scraper.slug);
-      process.exitCode = 1;
+      if (BEST_EFFORT.has(scraper.slug)) {
+        degraded.push(scraper.slug);
+      } else {
+        threw.push(scraper.slug);
+        process.exitCode = 1;
+      }
     }
   }
 
@@ -124,8 +143,15 @@ async function main() {
     ...(threw.length ? [`errored: ${threw.join(", ")}`] : []),
     ...(staleStores.length ? [`below freshness floor: ${staleStores.join(", ")}`] : []),
   ];
+  const degradedNote = degraded.length
+    ? ` Best-effort store(s) degraded (kept last data, run not failed): ${degraded.join(", ")}.`
+    : "";
   if (problems.length) {
-    console.error(`\n✖ Scrape finished with problems — ${problems.join("; ")}.`);
+    console.error(`\n✖ Scrape finished with problems — ${problems.join("; ")}.${degradedNote}`);
+  } else if (degraded.length) {
+    console.log(
+      `\n✔ ${selected.length - degraded.length}/${selected.length} store(s) healthy.${degradedNote}`,
+    );
   } else {
     console.log(`\n✔ All ${selected.length} store(s) healthy.`);
   }

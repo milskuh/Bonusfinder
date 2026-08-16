@@ -50,8 +50,22 @@ const MAX_PAGES = 40; // safety cap on how many /acties/<cat>/ pages we walk.
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function httpText(url: string): Promise<string> {
+  // A full browser-like header set. gall.nl's WAF 403s bare/datacenter requests;
+  // these headers help on header-based bot checks (they will NOT defeat a pure
+  // IP-reputation block — from such hosts Gall is handled as a best-effort store
+  // in run.ts and refreshed manually instead).
   const res = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT, "Accept-Language": "nl-NL,nl;q=0.9" },
+    headers: {
+      "User-Agent": USER_AGENT,
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.8",
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": "none",
+      "Sec-Fetch-User": "?1",
+      "Upgrade-Insecure-Requests": "1",
+    },
   });
   if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
   return res.text();
