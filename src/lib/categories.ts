@@ -142,6 +142,22 @@ export const CATEGORY_GROUPS: CategoryGroup[] = [
 ];
 
 /**
+ * Food-vs-non-food split, used by the offers feed to push grocery deals to the
+ * top of the "newest" sort (shoppers land expecting food/drink, not household or
+ * drugstore items). "Non-food" reuses the exact set the filter bar already groups
+ * under "nonfood" — drugstore, household, baby & kids, pets, and OVERIG (the
+ * uncategorised catch-all, demoted so a stray non-food item can't sit up top).
+ * Derived from CATEGORY_GROUPS so there is a single definition: adjust the group
+ * and the feed ordering follows automatically. FOOD is simply the complement.
+ */
+export const NONFOOD_CATEGORIES: Category[] =
+  CATEGORY_GROUPS.find((g) => g.key === "nonfood")?.categories ?? [];
+
+export const FOOD_CATEGORIES: Category[] = ALL_CATEGORIES.filter(
+  (c) => !NONFOOD_CATEGORIES.includes(c),
+);
+
+/**
  * The Top-deals hero draws from just two worlds — fresh and drinks — and mixes
  * the biggest discounts from each. Kept as two separate sets (rather than one
  * union) so the hero can interleave them and guarantee both are represented.

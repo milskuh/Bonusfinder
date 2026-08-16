@@ -1,8 +1,9 @@
 // src/lib/queries/offers.ts
-import { Prisma } from "@prisma/client";
+import { Prisma, Category } from "@prisma/client";
 import { db } from "@/lib/db";
 import { cached } from "@/lib/cache";
 import type { OfferFilters, OfferSort } from "@/lib/validation/filters";
+import { FOOD_CATEGORIES, NONFOOD_CATEGORIES } from "@/lib/categories";
 import { timeframeWhere } from "./timeframe";
 import { toPrefixTsQuery, likeEscape } from "./search";
 
@@ -49,6 +50,10 @@ export const activeOfferWhere = (now: Date): Prisma.OfferWhereInput => ({
 // return overlapping rows → duplicate ids on the client → a corrupted infinite
 // feed. The id tiebreaker gives each sort a total order, so pages never overlap.
 const orderByMap: Record<OfferSort, Prisma.OfferOrderByWithRelationInput[]> = {
+  // Within a region this is still newest-first; but shoppers land expecting
+  // groceries, so the "newest" feed is served in two regions — food/drink first,
+  // then non-food — each ordered by this clause (see getOffersFromDb). The other
+  // sorts use their orderBy directly, unpartitioned.
   newest: [{ createdAt: "desc" }, { id: "asc" }],
   // discountPercent is nullable (deals like "1+1 gratis" have none) — keep those
   // out of the top of the "highest discount" sort.
@@ -62,6 +67,28 @@ function endOfToday(): Date {
   d.setHours(23, 59, 59, 999);
   return d;
 }
+
+// The relations every feed card needs, defined once so the single-region path
+// and the two-region "newest" path (food-first) return identically-shaped rows.
+const offerInclude = {
+  supermarket: { select: { slug: true, name: true, logoUrl: true } },
+  product: {
+    select: {
+      id: true,
+      name: true,
+      nameEn: true,
+      brand: true,
+      imageUrl: true,
+      url: true,
+      category: true,
+      subcategory: true,
+      contentAmount: true,
+      contentUnit: true,
+    },
+  },
+} satisfies Prisma.OfferInclude;
+
+type OfferRow = Prisma.OfferGetPayload<{ include: typeof offerInclude }>;
 
 export async function getOffers(filters: OfferFilters) {
   // Coalesce concurrent identical requests into one DB round-trip and serve hot
@@ -122,38 +149,101 @@ async function getOffersFromDb(filters: OfferFilters) {
           OR "nameEn" ILIKE ${like}
           OR "brand" ILIKE ${like}
         )`;
+    // Bound the id set: a very broad term (e.g. a single common letter) could
+    // otherwise match the whole catalogue and build a huge IN list. The cap is
+    // far above any real filtered result (offers are then paginated anyway), so
+    // it only clips pathological/abusive queries, not genuine searches.
     const matches = await db.$queryRaw<Array<{ id: string }>>(
-      Prisma.sql`SELECT id FROM "Product" WHERE ${predicate}`,
+      Prisma.sql`SELECT id FROM "Product" WHERE ${predicate} LIMIT 5000`,
     );
     where.productId = { in: matches.map((m) => m.id) };
   }
 
-  const [total, offers] = await db.$transaction([
-    db.offer.count({ where }),
-    db.offer.findMany({
-      where,
-      orderBy: orderByMap[filters.sort],
-      skip: (filters.page - 1) * filters.pageSize,
-      take: filters.pageSize,
-      include: {
-        supermarket: { select: { slug: true, name: true, logoUrl: true } },
-        product: {
-          select: {
-            id: true,
-            name: true,
-            nameEn: true,
-            brand: true,
-            imageUrl: true,
-            url: true,
-            category: true,
-            subcategory: true,
-            contentAmount: true,
-            contentUnit: true,
-          },
-        },
-      },
-    }),
-  ]);
+  const skip = (filters.page - 1) * filters.pageSize;
+  const take = filters.pageSize;
+
+  let total: number;
+  let offers: OfferRow[];
+
+  if (filters.sort === "newest") {
+    // Food-first "newest": conceptually one list of all matching offers with the
+    // food/drink ones (newest-first) ahead of the non-food ones (newest-first).
+    // We serve that by treating the feed as two consecutive regions and slicing
+    // the requested page across the boundary. Region membership just narrows the
+    // existing `where` by category, so every other filter (store, price, search,
+    // timeframe…) still applies unchanged and there's one source of truth for it.
+    //
+    // If the user has picked categories, intersect each region with that
+    // selection — a food-only selection then degrades to a single region, and a
+    // non-food-only selection to the other, both still correct.
+    const foodCats = filters.categories
+      ? filters.categories.filter((c) => FOOD_CATEGORIES.includes(c))
+      : FOOD_CATEGORIES;
+    const nonFoodCats = filters.categories
+      ? filters.categories.filter((c) => NONFOOD_CATEGORIES.includes(c))
+      : NONFOOD_CATEGORIES;
+
+    // Restrict `where` to one region. `where.product` is a plain object literal we
+    // built above, so spreading it and overriding `category` is safe; the region
+    // list is already a subset of any user-selected categories.
+    const regionWhere = (cats: Category[]): Prisma.OfferWhereInput => ({
+      ...where,
+      product: { ...(where.product as Prisma.ProductWhereInput), category: { in: cats } },
+    });
+    const foodWhere = regionWhere(foodCats);
+    const nonFoodWhere = regionWhere(nonFoodCats);
+
+    // Count the whole result (unchanged total → pageCount/infinite-scroll behave
+    // as before) and the food region, which fixes where the boundary falls.
+    // Kept in one transaction so the two counts see a consistent snapshot.
+    const [fullTotal, foodTotal] = await db.$transaction([
+      db.offer.count({ where }),
+      db.offer.count({ where: foodWhere }),
+    ]);
+    total = fullTotal;
+
+    // Split this page's [skip, skip+take) window across the food region
+    // [0, foodTotal) and the non-food region that follows it.
+    const foodSkip = Math.min(skip, foodTotal);
+    const foodTake = Math.max(0, Math.min(take, foodTotal - skip));
+    const nonFoodSkip = Math.max(0, skip - foodTotal);
+    const nonFoodTake = take - foodTake;
+
+    const [foodPage, nonFoodPage] = await Promise.all([
+      foodTake > 0
+        ? db.offer.findMany({
+            where: foodWhere,
+            orderBy: orderByMap.newest,
+            skip: foodSkip,
+            take: foodTake,
+            include: offerInclude,
+          })
+        : Promise.resolve<OfferRow[]>([]),
+      nonFoodTake > 0
+        ? db.offer.findMany({
+            where: nonFoodWhere,
+            orderBy: orderByMap.newest,
+            skip: nonFoodSkip,
+            take: nonFoodTake,
+            include: offerInclude,
+          })
+        : Promise.resolve<OfferRow[]>([]),
+    ]);
+    offers = [...foodPage, ...nonFoodPage];
+  } else {
+    const [fullTotal, rows] = await db.$transaction([
+      db.offer.count({ where }),
+      db.offer.findMany({
+        where,
+        orderBy: orderByMap[filters.sort],
+        skip,
+        take,
+        include: offerInclude,
+      }),
+    ]);
+    total = fullTotal;
+    offers = rows;
+  }
 
   // Beste deal = laagste pricePerUnit onder alle offers van dat product BINNEN
   // hetzelfde tijdvenster (dus niet beperkt tot de huidige pagina, en niet
